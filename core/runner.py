@@ -45,6 +45,10 @@ def run_module(args):
         print(f"[!] {e}")
         return
 
+    args = normalize_args(args)
+
+    # flags override positional (already handled by argparse if present)
+
     # execute
     result = module.run(data, cred, args)
 
@@ -52,8 +56,11 @@ def run_module(args):
     if result:
         save_profile(result, path)
 
+
+
 def run_module_by_name(module_name, extra_args, data=None):
     import argparse
+    from core import target
 
     module = load_module(module_name)
 
@@ -61,11 +68,13 @@ def run_module_by_name(module_name, extra_args, data=None):
         print(f"[!] Module not found: {module_name}")
         return
 
+    # ---------------- BUILD ARGS ----------------
     args = argparse.Namespace()
     args.extra = extra_args
     args.no_auth = False
     args.cred = None
 
+    # ---------------- PARSE FLAGS (simple) ----------------
     i = 0
     while i < len(extra_args):
         if extra_args[i].startswith("--"):
@@ -82,8 +91,10 @@ def run_module_by_name(module_name, extra_args, data=None):
         else:
             i += 1
 
-    # load data + cred
-    from core import target
+    # ---------------- NORMALIZE ----------------
+    args = normalize_args(args)
+
+    # ---------------- LOAD DATA ----------------
     try:
         if not data:
             data, _ = target.load_current_profile()
@@ -91,4 +102,20 @@ def run_module_by_name(module_name, extra_args, data=None):
     except:
         cred = None
 
+    # ---------------- RUN ----------------
     return module.run(data, cred, args)
+
+
+def normalize_args(args):
+    extra = getattr(args, "extra", []) or []
+
+    # positional → file
+    if len(extra) >= 1 and getattr(args, "file", None) is None:
+        args.file = extra[0]
+
+    # positional → out
+    if len(extra) >= 2 and getattr(args, "out", None) is None:
+        args.out = extra[1]
+
+    return args
+

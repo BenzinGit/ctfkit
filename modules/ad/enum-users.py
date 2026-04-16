@@ -9,7 +9,7 @@ def run(data, cred, args):
         print("[!] Domain required")
         return
 
-    users_file = args.users or "users.txt"
+    users_file = getattr(args, "users", None) or "users.txt"
     output_file = args.out or f"valid_users_{dc}.txt"
 
     # ---------------- NO CREDS → KERBRUTE ----------------

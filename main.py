@@ -7,7 +7,8 @@ from core import target
 from core import runner
 from core.aliases import ALIASES
 from core import doctor
-from core import pipeline
+from core.chain import run_chain_script
+
 # ---------------------- ALIAS RESOLVER ----------------------
 
 def resolve_alias():
@@ -38,6 +39,10 @@ def resolve_alias():
 
 
 # ---------------------- MAIN ----------------------
+
+
+
+
 
 def main():
     # ---------------------- PREPROCESS ----------------------
@@ -125,16 +130,13 @@ def main():
     doctor_parser.add_argument("--install", action="store_true")
     doctor_parser.set_defaults(func=doctor.doctor_run)
 
+    # ---------------------- CHAIN ----------------------
+    chain_parser = subparsers.add_parser("chain")
+    chain_parser.add_argument("name")
+    chain_parser.add_argument("extra", nargs="*")
+    chain_parser.add_argument("--auto", action="store_true")
 
-    # ---------------------- Pipeline ----------------------
-
-    pipe = subparsers.add_parser("pipeline")
-    pipe.add_argument("name")
-    pipe.set_defaults(func=lambda args: pipeline.run_pipeline(
-    args.name,
-    target.load_current_profile()[0],
-    args.extra   
-))
+    chain_parser.set_defaults(func=lambda args: run_chain_script(args))
     
     
 
@@ -154,15 +156,17 @@ def main():
     run_parser.add_argument("--no-auth", action="store_true")
     run_parser.add_argument("extra", nargs="*")
     run_parser.add_argument("--users")
-    run_parser.add_argument("--out")
+    run_parser.add_argument("--out", "-o")
 
-    run_parser.add_argument("--names")
+    run_parser.add_argument("--file", "-f", "--in")
     run_parser.add_argument("--format")
+    run_parser.add_argument("--mode")
+
+    run_parser.add_argument("--save", action="store_true")
     run_parser.set_defaults(func=runner.run_module)
 
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
-    args.extra = unknown
     if hasattr(args, "func"):
         args.func(args)
     else:

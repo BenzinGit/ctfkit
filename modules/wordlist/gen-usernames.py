@@ -5,19 +5,35 @@ def run(data, cred, args):
     import subprocess
     from pathlib import Path
     import shutil
-    from core.loot import get_loot_path, require_input
 
     BASE_DIR = Path(__file__).resolve().parent.parent.parent
     TOOLS_DIR = BASE_DIR / "tools"
 
+    # ---------------- HELPERS ----------------
+    def require_file(value, name):
+        if not value:
+            print(f"[!] Missing --{name}")
+            return None
+
+        path = Path(value).expanduser().resolve()
+
+        if not path.exists():
+            print(f"[!] File not found: {path}")
+            return None
+
+        return path
+
     # ---------------- INPUT ----------------
-    input_file = require_input(data, args, "names", "fullnames", "full names file")
+    input_file = require_file(args.file, "file")
     if not input_file:
         return
 
     # ---------------- OUTPUT ----------------
-    output_file = get_loot_path(data, "usernames")
+    output_path = args.out or "usernames.txt"
+    output_file = Path(output_path).expanduser().resolve()
 
+
+    # ---------------- FORMATS ----------------
     formats = getattr(args, "format", None) or ",".join([
         "first",
         "last",
@@ -42,7 +58,7 @@ def run(data, cred, args):
         print("[*] Run: ctf doctor --install")
         return
 
-    # ---------------- RUN ----------------
+    # ----------input_file = require_file(getattr(args, "file", None), "file")------ RUN ----------------
     cmd = f"{tool} --input-file {input_file} --select-format {formats}"
 
     print(f"[*] Running: {cmd}\n")
