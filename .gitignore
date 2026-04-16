@@ -210,8 +210,15 @@ __marimo__/
 # Project specific (CTF tool) ---
 profiles/
 domains/
+!domains/.gitkeep
 scans/
 hosts.txt
 
 profiles/*
 !profiles/.gitkeep
+
+# Tools (downloaded externally)
+tools/*
+!tools/.gitkeep
+
+

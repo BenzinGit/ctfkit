@@ -9,18 +9,16 @@ MODULES_DIR = BASE_DIR / "modules"
 
 # ---------------------- Module Loader ----------------------
 
+
+
 def load_module(module_name):
-    path = MODULES_DIR / Path(module_name.replace('.', '/')).with_suffix('.py')
+    import importlib
 
-    if not path.exists():
-        raise Exception(f"Module not found: {module_name}")
-
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    return mod
-
+    try:
+        return importlib.import_module(f"modules.{module_name}")
+    except Exception as e:
+        print(f"[!] Failed to load module {module_name}: {e}")
+        return None
 
 # ---------------------- Runner ----------------------
 
@@ -53,3 +51,44 @@ def run_module(args):
     # save if modified
     if result:
         save_profile(result, path)
+
+def run_module_by_name(module_name, extra_args, data=None):
+    import argparse
+
+    module = load_module(module_name)
+
+    if not module:
+        print(f"[!] Module not found: {module_name}")
+        return
+
+    args = argparse.Namespace()
+    args.extra = extra_args
+    args.no_auth = False
+    args.cred = None
+
+    i = 0
+    while i < len(extra_args):
+        if extra_args[i].startswith("--"):
+            key = extra_args[i][2:]
+
+            if i + 1 < len(extra_args) and not extra_args[i + 1].startswith("--"):
+                value = extra_args[i + 1]
+                i += 2
+            else:
+                value = True
+                i += 1
+
+            setattr(args, key, value)
+        else:
+            i += 1
+
+    # load data + cred
+    from core import target
+    try:
+        if not data:
+            data, _ = target.load_current_profile()
+        cred = target.get_active_cred(data)
+    except:
+        cred = None
+
+    return module.run(data, cred, args)

@@ -1,6 +1,6 @@
 ALIASES = {
     "target": {
-        "aliases": ["target", "t", "aim"],
+        "aliases": ["target", "t", "aim", "host"],
         "actions": {
             "create": ["create", "new", "add"],
             "list": ["list", "ls", "all"],
@@ -9,7 +9,7 @@ ALIASES = {
             "creds": ["creds", "credentials", "c"],
             "set-cred": ["set-cred", "sc", "use-cred"],
             "add-cred": ["add-cred", "ac", "new-cred", "nc"],
-            "add-domain": ["add-domain", "new-domain", "create-domain"]
+            "add-domain": ["add-domain", "ad", "new-domain", "create-domain"]
         }
     },
 

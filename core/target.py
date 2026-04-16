@@ -204,6 +204,9 @@ def target_show(args):
     print_creds_table(all_creds, active_idx)
 
 
+
+
+
 def target_add_cred(args):
     try:
         data, path = load_current_profile()
@@ -211,43 +214,70 @@ def target_add_cred(args):
         print(f"[!] {e}")
         return
 
+    # ---------------- DETERMINE TYPE ----------------
+    if args.hash:
+        cred_type = "ntlm"
+        secret = args.hash
+
+    elif args.aes:
+        cred_type = "aes"
+        secret = args.aes
+
+    elif args.ccache:
+        cred_type = "ticket"
+        secret = args.ccache
+
+    elif args.password:
+        cred_type = "password"
+        secret = args.password
+
+    else:
+        print("[!] You must provide password or --hash/--aes/--ccache")
+        return
+
+    # ---------------- BUILD CRED ----------------
     new_cred = {
         "user": args.user,
-        "pass": args.password
+        "type": cred_type
     }
 
-    # ---------------- LOCAL ADD ----------------
+    if cred_type == "ticket":
+        new_cred["ccache"] = secret
+    else:
+        new_cred["secret"] = secret
+
+    # ---------------- SAVE LOCAL ----------------
     data["creds"].append(new_cred)
-    data["current_cred"] = len(data["creds"]) - 1
+    data["current_cred"] = len(get_all_creds(data)) - 1
 
     save_profile(data, path)
 
-    print(f"[+] Added credential {args.user} and set as active")
+    print(f"[+] Added {cred_type} credential for {args.user}")
 
     # ---------------- DOMAIN SYNC ----------------
     domain_name = data.get("domain")
-    if domain_name:
-        domain_name = domain_name.lower()
 
     if domain_name:
         domain_data, domain_path = load_domain(domain_name)
 
         if domain_data:
-            # check if already exists
             exists = any(
-                c["user"] == args.user and c["pass"] == args.password
+                c.get("user") == args.user and
+                c.get("type") == cred_type and
+                (
+                    c.get("secret") == secret or
+                    c.get("ccache") == secret
+                )
                 for c in domain_data.get("creds", [])
             )
 
             if not exists:
                 domain_data["creds"].append(new_cred)
                 save_domain(domain_data, domain_path)
-
-                print(f"[+] Synced credential to domain: {domain_name}")
+                print(f"[+] Synced to domain")
             else:
                 print("[*] Credential already exists in domain")
 
-    # show creds
     target_creds(argparse.Namespace(local=False, domain=False))
 
 
@@ -285,7 +315,12 @@ def target_set_cred(args):
     save_profile(data, path)
 
     c = creds[idx]
-    print(f"[+] Active credential set to [{idx}] {c['user']} ({c['source']})")
+    typ = c.get("type", "unknown")
+    source = c.get("source", "local")
+
+    source_str = "Domain" if source == "domain" else "Local"
+
+    print(f"[+] Active credential set to [{idx}] {c['user']} ({typ}, {source_str})")
 
 
 def target_creds(args):
@@ -321,51 +356,66 @@ def print_creds_table(creds, active_idx):
         print("[!] No credentials found")
         return
 
-    print("\nCreds:\n")
-    print(f"{'':<4} {'ID':<3} {'User':<15} {'Password':<15} {'Type':<6}")
-    print(f"{'':<4} {'--':<3} {'-------------':<15} {'--------------':<15} {'------':<6}")
+    print("\nID  User          Type      Secret")
+    print("--  ------------  --------  ------------------")
 
     for display_idx, c in enumerate(creds):
-        active = "[*]" if c["index"] == active_idx else ""
-        typ = "Local" if c["source"] == "local" else "Domain"
+        marker = "[*]" if c["index"] == active_idx else "   "
 
-        print(f"{active:<4} {display_idx:<3} {c['user']:<15} {c['pass']:<15} {typ:<6}")
+        user = c.get("user", "")
+        typ = c.get("type", "")
+        secret = c.get("secret", "")
+
+        print(f"{marker} {display_idx:<2} {user:<12} {typ:<8} {secret}")
 
 def get_all_creds(data):
     combined = []
     seen = set()
 
-    # local creds
+    def make_key(c):
+        return (
+            c.get("user"),
+            c.get("type"),
+            c.get("secret") or c.get("ccache")
+        )
+
+    # local
     for c in data.get("creds", []):
-        key = (c["user"], c["pass"])
+        key = make_key(c)
+        if key in seen:
+            continue
+        seen.add(key)
 
-        if key not in seen:
-            combined.append({
-                "user": c["user"],
-                "pass": c["pass"],
-                "source": "local",
-                "index": len(combined)
-            })
-            seen.add(key)
+        combined.append({
+            "user": c["user"],
+            "type": c["type"],
+            "secret": c.get("secret") or c.get("ccache"),
+            "source": "local",
+            "index": len(combined)
+        })
 
-    # domain creds
+    # domain
     domain_name = data.get("domain")
     if domain_name:
         domain_data, _ = load_domain(domain_name)
         if domain_data:
             for c in domain_data.get("creds", []):
-                key = (c["user"], c["pass"])
+                key = make_key(c)
+                if key in seen:
+                    continue
+                seen.add(key)
 
-                if key not in seen:
-                    combined.append({
-                        "user": c["user"],
-                        "pass": c["pass"],
-                        "source": "domain",
-                        "index": len(combined)
-                    })
-                    seen.add(key)
+                combined.append({
+                    "user": c["user"],
+                    "type": c["type"],
+                    "secret": c.get("secret") or c.get("ccache"),
+                    "source": "domain",
+                    "index": len(combined)
+                })
 
     return combined
+
+
 
 
 def target_whoami(args):
@@ -382,31 +432,36 @@ def target_whoami(args):
         return
 
     user = cred["user"]
-    password = cred["pass"]
+    typ = cred.get("type", "unknown")
+    secret = cred.get("secret", "N/A")
     source = cred.get("source", "local")
 
     host = data.get("name")
     ip = data.get("ip")
     domain = data.get("domain") or "N/A"
 
-    # ---------------- SHORT MODE ----------------
+    source = cred.get("source", "local")
+    source_str = "Domain" if source == "domain" else "Local"
+
+    # short mode
     if getattr(args, "short", False):
         print(f"{user}@{host}")
         return
 
-    # ---------------- TABLE MODE ----------------
+    # table mode
     if getattr(args, "table", False):
         print("\n[*] Current Credential:\n")
-        print(" ID  User           Password        Type")
-        print(" --  -------------  --------------  ------")
-
-        print(f"[*] 0   {user:<13} {password:<14} {source.capitalize()}")
+        print(" ID  User           Auth      Secret")
+        print(" --  -------------  --------  ------------------")
+        print(f"[*] 0   {user:<13} {typ:<8} {secret}")
         return
 
-    # ---------------- DEFAULT ----------------
 
     print(f"User:     {user}")
+    print(f"Auth:     {typ} ({source_str})\n")
+
     print(f"Host:     {host} ({ip})")
-    print(f"Domain:   {domain}")
-    print(f"Password: {password}")
-    print(f"Source:   {source.capitalize()}")
+    print(f"Domain:   {domain}\n")
+
+    print(f"Secret:   {secret}")
+

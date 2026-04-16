@@ -6,8 +6,8 @@ import sys
 from core import target
 from core import runner
 from core.aliases import ALIASES
-
-
+from core import doctor
+from core import pipeline
 # ---------------------- ALIAS RESOLVER ----------------------
 
 def resolve_alias():
@@ -91,8 +91,19 @@ def main():
 
     addcred = target_sub.add_parser("add-cred")
     addcred.add_argument("user")
-    addcred.add_argument("password")
+
+    # password (default)
+    addcred.add_argument("password", nargs="?")
+
+    # alternative auth types
+    addcred.add_argument("--hash")
+    addcred.add_argument("--aes")
+    addcred.add_argument("--ccache")
+
     addcred.set_defaults(func=target.target_add_cred)
+
+
+
 
     creds = target_sub.add_parser("creds")
     creds.add_argument("--local", action="store_true")
@@ -108,6 +119,27 @@ def main():
     add_domain.set_defaults(func=target.target_add_domain)
 
 
+    # ---------------------- DOCTOR ----------------------
+
+    doctor_parser = subparsers.add_parser("doctor")
+    doctor_parser.add_argument("--install", action="store_true")
+    doctor_parser.set_defaults(func=doctor.doctor_run)
+
+
+    # ---------------------- Pipeline ----------------------
+
+    pipe = subparsers.add_parser("pipeline")
+    pipe.add_argument("name")
+    pipe.set_defaults(func=lambda args: pipeline.run_pipeline(
+    args.name,
+    target.load_current_profile()[0],
+    args.extra   
+))
+    
+    
+
+
+
     # ---------------------- WHOAMI ----------------------
     whoami_parser = subparsers.add_parser("whoami")
     whoami_parser.add_argument("--short", action="store_true")
@@ -121,10 +153,16 @@ def main():
     run_parser.add_argument("--cred")
     run_parser.add_argument("--no-auth", action="store_true")
     run_parser.add_argument("extra", nargs="*")
+    run_parser.add_argument("--users")
+    run_parser.add_argument("--out")
+
+    run_parser.add_argument("--names")
+    run_parser.add_argument("--format")
     run_parser.set_defaults(func=runner.run_module)
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
+    args.extra = unknown
     if hasattr(args, "func"):
         args.func(args)
     else:
