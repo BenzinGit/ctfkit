@@ -135,7 +135,7 @@ def main():
     chain_parser.add_argument("name")
     chain_parser.add_argument("extra", nargs="*")
     chain_parser.add_argument("--auto", action="store_true")
-
+    chain_parser.add_argument("--quiet", action="store_true")
     chain_parser.set_defaults(func=lambda args: run_chain_script(args))
     
     
@@ -157,6 +157,7 @@ def main():
     run_parser.add_argument("extra", nargs="*")
     run_parser.add_argument("--users")
     run_parser.add_argument("--out", "-o")
+    run_parser.add_argument("--cmd")
 
     run_parser.add_argument("--file", "-f", "--in")
     run_parser.add_argument("--format")

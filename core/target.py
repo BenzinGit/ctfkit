@@ -356,9 +356,24 @@ def print_creds_table(creds, active_idx):
         print("[!] No credentials found")
         return
 
-    print("\nID  User          Type      Secret")
-    print("--  ------------  --------  ------------------")
+    # ---------------- CALCULATE WIDTHS ----------------
+    id_width = max(len(str(i)) for i in range(len(creds)))
+    user_width = max(len(c.get("user", "")) for c in creds)
+    type_width = max(len(c.get("type", "")) for c in creds)
+    secret_width = max(len(c.get("secret", "")) for c in creds)
 
+    # minimum widths (for aesthetics)
+    id_width = max(id_width, 2)
+    user_width = max(user_width, 12)
+    type_width = max(type_width, 8)
+    secret_width = max(secret_width, 12)
+
+    # ---------------- HEADER ----------------
+    print()
+    print(f"{'':3} {'ID':<{id_width}}  {'User':<{user_width}}  {'Type':<{type_width}}  {'Secret':<{secret_width}}")
+    print(f"{'':3} {'--':<{id_width}}  {'-'*user_width}  {'-'*type_width}  {'-'*secret_width}")
+
+    # ---------------- ROWS ----------------
     for display_idx, c in enumerate(creds):
         marker = "[*]" if c["index"] == active_idx else "   "
 
@@ -366,7 +381,7 @@ def print_creds_table(creds, active_idx):
         typ = c.get("type", "")
         secret = c.get("secret", "")
 
-        print(f"{marker} {display_idx:<2} {user:<12} {typ:<8} {secret}")
+        print(f"{marker} {display_idx:<{id_width}}  {user:<{user_width}}  {typ:<{type_width}}  {secret:<{secret_width}}")
 
 def get_all_creds(data):
     combined = []
@@ -445,15 +460,15 @@ def target_whoami(args):
 
     # short mode
     if getattr(args, "short", False):
-        print(f"{user}@{host}")
+        print(f"{user}@{ip}")
         return
 
     # table mode
     if getattr(args, "table", False):
         print("\n[*] Current Credential:\n")
-        print(" ID  User           Auth      Secret")
-        print(" --  -------------  --------  ------------------")
-        print(f"[*] 0   {user:<13} {typ:<8} {secret}")
+        print("    User           Auth      Secret")
+        print("    -------------  --------  ------------------")
+        print(f"[*] {user:<13}  {typ:<8}  {secret}")
         return
 
 

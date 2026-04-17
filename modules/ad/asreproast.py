@@ -46,3 +46,6 @@ def run(data, cred, args):
     output.write_text("\n".join(hashes))
 
     print(f"[+] Saved {len(hashes)} hashes → {output}")
+
+
+    

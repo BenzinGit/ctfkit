@@ -7,6 +7,15 @@ def get_artifacts_dir(target_name):
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+def get_domains_dir():
+    return BASE_DIR / "domains"
 
 def get_artifact(target_name, filename):
     return get_artifacts_dir(target_name) / filename
+
+def get_chain_artifacts_dir(target_name, chain_name):
+    base = get_artifacts_dir(target_name)
+    path = base / chain_name
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+

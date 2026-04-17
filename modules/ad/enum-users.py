@@ -4,6 +4,7 @@ def run(data, cred, args):
 
     domain = data.get("domain")
     dc = data.get("ip")
+    quiet = getattr(args, "quiet", False)
 
     if not domain:
         print("[!] Domain required")
@@ -12,52 +13,54 @@ def run(data, cred, args):
     users_file = getattr(args, "users", None) or "users.txt"
     output_file = args.out or f"valid_users_{dc}.txt"
 
-    # ---------------- NO CREDS → KERBRUTE ----------------
+    # ---------------- SELECT COMMAND ----------------
     if args.no_auth or not cred:
+        print("[*] Using kerbrute (no auth)")
         cmd = f"kerbrute userenum -d {domain} --dc {dc} {users_file}"
+        mode = "kerbrute"
 
-        print(f"[*] Using kerbrute (no auth)")
-        print(f"[*] Running: {cmd}\n")
-
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-
-        print(result.stdout)
-
-        valid_users = []
-        for line in result.stdout.splitlines():
-            if "VALID USERNAME" in line:
-                user = line.split()[-1]
-                valid_users.append(user)
-
-    # ---------------- WITH CREDS → LDAP ----------------
     else:
         user = cred["user"]
         typ = cred["type"]
         secret = cred["secret"]
 
-        print(f"[*] Using LDAP (authenticated)")
+        print("[*] Using LDAP (authenticated)")
 
         if typ == "password":
             cmd = f"nxc ldap {dc} -u {user} -p {secret} --users"
-
         elif typ == "ntlm":
             cmd = f"nxc ldap {dc} -u {user} -H {secret} --users"
-
         elif typ == "ticket":
             cmd = f"KRB5CCNAME={secret} nxc ldap {dc} --use-kcache --users"
-
         else:
             print("[!] Unsupported auth type for LDAP")
             return
 
-        print(f"[*] Running: {cmd}\n")
+        mode = "ldap"
 
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    print(f"[*] Running: {cmd}\n")
 
+    # ---------------- RUN ----------------
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+
+    if not quiet and result.stdout:
         print(result.stdout)
 
-        # ---------------- PARSE USERS ----------------
-        valid_users = []
+    # ---------------- PARSE ----------------
+    valid_users = []
+
+    if mode == "kerbrute":
+        for line in result.stdout.splitlines():
+            if "VALID USERNAME" in line:
+                user = line.split()[-1]
+                valid_users.append(user)
+
+    elif mode == "ldap":
         capture = False
 
         for line in result.stdout.splitlines():
@@ -68,20 +71,13 @@ def run(data, cred, args):
             if not capture:
                 continue
 
-            # Skip empty lines
             if not line.strip():
                 continue
 
-            # Extract username (column after hostname junk)
             try:
-                # Split by spaces, remove empty chunks
                 parts = [p for p in line.split(" ") if p]
-
-                # Username is always the LAST fixed column BEFORE timestamps
-                # In your output it's around index 4–5, but safer:
                 user = parts[4]
 
-                # Skip machine accounts
                 if user.endswith("$"):
                     continue
 

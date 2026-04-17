@@ -1,11 +1,10 @@
-PROVIDES = ["creds"]
+PROVIDES = []
 REQUIRES = []
+from modules.crack.detect_hash import detect_mode
 
 def run(data, cred, args):
     import subprocess
-    import argparse
     from pathlib import Path
-    from core import target
 
     # ---------------- HELPERS ----------------
     def require_file(val, name):
@@ -21,8 +20,10 @@ def run(data, cred, args):
 
         return path
 
+    quiet = getattr(args, "quiet", False)
+
     # ---------------- INPUT ----------------
-    hashfile = require_file(args.file, "file")
+    hashfile = require_file(getattr(args, "file", None), "file")
     if not hashfile:
         return
 
@@ -38,15 +39,31 @@ def run(data, cred, args):
     mode = getattr(args, "mode", None)
 
     if not mode:
-        print("[!] Missing --mode")
-        print("[*] Example: --mode 18200 (AS-REP), 13100 (Kerberoast), 0 (MD5)")
-        return
+        mode = detect_mode(hashfile)
+
+        if not mode:
+            print("[!] Could not detect hash type")
+            print("[*] Use --mode manually")
+            return
+
+        print(f"[*] Auto-detected mode: {mode}")
+
+    # ---------------- OUTPUT ----------------
+    output_path = getattr(args, "out", None) or "cracked.txt"
+    output_file = Path(output_path).expanduser().resolve()
 
     # ---------------- RUN HASHCAT ----------------
     cmd = f"hashcat -m {mode} {hashfile} {wordlist}"
 
-    print(f"[*] Running: {cmd}\n")
-    subprocess.run(cmd, shell=True)
+    run_result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+
+    if not quiet and run_result.stdout:
+        print(run_result.stdout)
 
     # ---------------- SHOW RESULTS ----------------
     show_cmd = f"hashcat -m {mode} {hashfile} --show"
@@ -58,44 +75,15 @@ def run(data, cred, args):
         print("[!] No cracked hashes yet")
         return
 
-    print("\n[+] Cracked credentials:\n")
+    if not lines:
+        print("[!] No cracked hashes yet")
+        return
 
-    for line in lines:
-        try:
-            hash_part, password = line.rsplit(":", 1)
+    if not quiet:
+        print("\n[+] Cracked results:\n")
+        for line in lines:
+            print(f"[+] {line}")
 
-            user = extract_user(hash_part, mode)
-
-            print(f"[+] {user}:{password}")
-
-            # ---------------- OPTIONAL SAVE ----------------
-            if getattr(args, "save", False):
-                target.target_add_cred(
-                    argparse.Namespace(
-                        user=user,
-                        password=password,
-                        hash=None,
-                        aes=None,
-                        ccache=None
-                    )
-                )
-
-        except Exception:
-            print(f"[!] Failed to parse line: {line}")
-
-
-def extract_user(hash_part, mode):
-    try:
-        if mode == "18200" and "$krb5asrep$" in hash_part:
-            return hash_part.split("$")[3].split("@")[0]
-
-        if mode == "13100" and "$krb5tgs$" in hash_part:
-            return hash_part.split("$")[3].split("@")[0]
-
-        if mode == "5600":
-            return hash_part.split("::")[0]
-
-        return "unknown"
-
-    except Exception:
-        return "unknown"
+    # ---------------- SAVE ----------------
+    output_file.write_text("\n".join(lines))
+    print(f"\n[+] Saved → {output_file}")
