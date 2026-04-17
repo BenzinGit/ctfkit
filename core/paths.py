@@ -19,3 +19,9 @@ def get_chain_artifacts_dir(target_name, chain_name):
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+def get_tools_dir():
+    return BASE_DIR / "tools"
+
+def get_tool_path(filename):
+    return get_tools_dir() / filename
+

@@ -7,9 +7,12 @@ PROFILES_DIR = BASE_DIR / "profiles"
 CURRENT_FILE = PROFILES_DIR / "current"
 
 PROFILES_DIR.mkdir(exist_ok=True)
-
+ARTIFACTS_DIR = BASE_DIR / "artifacts"
 
 # ---------------------- Helpers ----------------------
+
+
+
 
 def get_profile_path(name):
     return PROFILES_DIR / f"{name}.json"
@@ -180,7 +183,86 @@ def target_add_domain(args):
         save_domain(domain_data, get_domain_path(domain_name))
         print(f"[+] Auto-created domain {domain_name}")
 
+def target_delete(args):
+    import shutil
 
+    name = args.name or load_current_name()
+
+    if not name:
+        print("[!] No target specified and no current target")
+        return
+
+    name = name.lower()
+
+    # ---------------- LOAD PROFILE ----------------
+    profile_path = get_profile_path(name)
+
+    if not profile_path.exists():
+        print(f"[!] Target does not exist: {name}")
+        return
+
+    data = json.loads(profile_path.read_text())
+    domain_name = data.get("domain")
+
+    artifact_path = ARTIFACTS_DIR / name
+
+    print(f"[!] This will delete target '{name}':")
+    print(f"    - {profile_path}")
+    print(f"    - {artifact_path}")
+
+    if not getattr(args, "force", False):
+        confirm = input("\nType 'yes' to confirm: ")
+        if confirm.lower() != "yes":
+            print("[*] Aborted")
+            return
+
+    # ---------------- DELETE PROFILE ----------------
+    profile_path.unlink()
+    print(f"[+] Deleted profile")
+
+    # ---------------- DELETE ARTIFACTS ----------------
+    if artifact_path.exists():
+        shutil.rmtree(artifact_path)
+        print(f"[+] Deleted artifacts")
+
+    # ---------------- HANDLE CURRENT ----------------
+    current = load_current_name()
+    if current == name:
+        CURRENT_FILE.unlink(missing_ok=True)
+        print("[*] Cleared current target")
+
+    # ---------------- DOMAIN CLEANUP ----------------
+    if domain_name:
+        domain_path = get_domain_path(domain_name)
+
+        if domain_path.exists():
+            # check if any other target uses this domain
+            still_used = False
+
+            for f in PROFILES_DIR.glob("*.json"):
+                other = json.loads(f.read_text())
+                if other.get("domain") == domain_name:
+                    still_used = True
+                    break
+
+            if not still_used:
+                print(f"\n[?] Domain '{domain_name}' is no longer used")
+
+                if getattr(args, "force", False):
+                    delete_domain = True
+                else:
+                    ans = input("Delete domain as well? (y/N): ").lower()
+                    delete_domain = ans == "y"
+
+                if delete_domain:
+                    domain_path.unlink()
+                    print(f"[+] Deleted domain {domain_name}")
+                else:
+                    print("[*] Domain kept")
+
+    print(f"[+] Target '{name}' removed")
+
+    
 
 def target_list(args):
     for f in PROFILES_DIR.glob("*.json"):
@@ -248,7 +330,7 @@ def target_add_cred(args):
 
     # ---------------- SAVE LOCAL ----------------
     data["creds"].append(new_cred)
-    data["current_cred"] = len(get_all_creds(data)) - 1
+    data["current_cred"] = len(data["creds"]) - 1
 
     save_profile(data, path)
 

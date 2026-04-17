@@ -1,26 +1,51 @@
 def parse_line(line):
     try:
-        # AS-REP
+        if not line or line.startswith("["):
+            return None
+
+        # -------------------
+        # 1. DCSync (MOST SPECIFIC)
+        # -------------------
+        if ":::" in line:
+            parts = line.split(":")
+
+            if len(parts) >= 4:
+                user = parts[0]
+                rid = parts[1]
+                nthash = parts[3]
+
+                if rid.isdigit():
+                    if nthash and nthash != "aad3b435b51404eeaad3b435b51404ee":
+                        return {"user": user, "type": "ntlm", "secret": nthash}
+
+        # -------------------
+        # 2. AS-REP
+        # -------------------
         if "$krb5asrep$" in line:
             hash_part, password = line.rsplit(":", 1)
             user = hash_part.split("$")[3].split("@")[0]
             return {"user": user, "type": "password", "secret": password}
 
-        # Kerberoast
+        # -------------------
+        # 3. Kerberoast
+        # -------------------
         if "$krb5tgs$" in line:
             hash_part, password = line.rsplit(":", 1)
-            user = hash_part.split("$")[3].split("@")[0]
-            user = user.lstrip("*")  
+            user = hash_part.split("$")[3].split("@")[0].lstrip("*")
             return {"user": user, "type": "password", "secret": password}
 
-        # NetNTLMv2
-        if "::" in line:
+        # -------------------
+        # 4. NetNTLMv2
+        # -------------------
+        if "::" in line and "$" not in line:
             user = line.split("::")[0]
             password = line.rsplit(":", 1)[1]
             return {"user": user, "type": "password", "secret": password}
 
-        # Fallback: user:pass
-        if ":" in line:
+        # -------------------
+        # 5. Fallback (VERY strict)
+        # -------------------
+        if line.count(":") == 1:
             user, password = line.split(":", 1)
             return {"user": user, "type": "password", "secret": password}
 
@@ -28,6 +53,7 @@ def parse_line(line):
         return None
 
     return None
+
 
 def run(data, cred, args):
     from pathlib import Path
@@ -60,7 +86,6 @@ def run(data, cred, args):
         parsed = parse_line(line)
 
         if not parsed:
-            print(f"[!] Skipping: {line}")
             continue
 
         user = parsed["user"]

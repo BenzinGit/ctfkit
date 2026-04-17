@@ -107,8 +107,10 @@ def main():
 
     addcred.set_defaults(func=target.target_add_cred)
 
-
-
+    delete_parser = target_sub.add_parser("delete", help="Delete a target")
+    delete_parser.add_argument("name", nargs="?", help="Target name (optional, defaults to current)")
+    delete_parser.add_argument("--force", action="store_true", help="Skip confirmation")
+    delete_parser.set_defaults(func=target.target_delete)
 
     creds = target_sub.add_parser("creds")
     creds.add_argument("--local", action="store_true")
@@ -156,12 +158,14 @@ def main():
     run_parser.add_argument("--no-auth", action="store_true")
     run_parser.add_argument("extra", nargs="*")
     run_parser.add_argument("--users")
+    run_parser.add_argument("--user")
     run_parser.add_argument("--out", "-o")
     run_parser.add_argument("--cmd")
-
+    run_parser.add_argument("--run", action="store_true")
     run_parser.add_argument("--file", "-f", "--in")
     run_parser.add_argument("--format")
     run_parser.add_argument("--mode")
+    run_parser.add_argument("--method")
 
     run_parser.add_argument("--save", action="store_true")
     run_parser.set_defaults(func=runner.run_module)

@@ -18,6 +18,11 @@ def doctor_run(args):
         "nxc": {
             "check": "nxc",
             "install": "https://github.com/Pennyw0rth/NetExec"
+        },
+        "winpeas": {
+            "check": "winPEASx64.exe",
+            "type": "binary",
+            "url": "https://github.com/peass-ng/PEASS-ng/releases/latest/download/winPEASx64.exe"
         }
     }
 
