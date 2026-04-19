@@ -166,7 +166,7 @@ def main():
     run_parser.add_argument("--format")
     run_parser.add_argument("--mode")
     run_parser.add_argument("--method")
-
+    run_parser.add_argument("--all", action="store_true")
     run_parser.add_argument("--save", action="store_true")
     run_parser.set_defaults(func=runner.run_module)
 

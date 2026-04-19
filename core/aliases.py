@@ -1,14 +1,14 @@
 ALIASES = {
     "target": {
-        "aliases": ["target", "t", "aim", "host"],
+        "aliases": ["target", "t", "host", "hosts", "targets"],
         "actions": {
-            "create": ["create", "new", "add"],
+            "create": ["create", "create-target", "new", "new-target" "add", "add-target"],
             "list": ["list", "ls", "all"],
-            "use": ["use", "set", "select"],
-            "show": ["show", "info"],
-            "creds": ["creds", "credentials", "c"],
-            "set-cred": ["set-cred", "sc", "use-cred"],
-            "add-cred": ["add-cred", "ac", "new-cred", "nc"],
+            "use": ["use", "set", "select", "switch"],
+            "show": ["show", "info", "target-info", "host-info"],
+            "creds": ["creds", "credentials", "c", "users", "accounts", "list-creds", "list-users", "ls-creds" "ls-users" ],
+            "set-cred": ["set-cred", "set-user", "use-cred", "use.user", "select-cred", "select-user", "switch-cred", "switch-user", "su"],
+            "add-cred": ["add-cred", "add-user","new-cred","new-user","create-cred","create-user","useradd"],
             "add-domain": ["add-domain", "ad", "new-domain", "create-domain"]
         }
     },
@@ -22,7 +22,7 @@ ALIASES = {
     },
 
     "util": {
-        "aliases": ["util", "uma"],
+        "aliases": ["util"],
         "actions": {
             "ping": ["ping", "pong"]
         }
@@ -35,5 +35,19 @@ ALIASES = {
             "fast": ["fast", "quick"]
 
         }
-    }
+    },
+     "win": {
+        "aliases": ["win", "windows"],
+        "actions": {
+            "upload": ["upload", "drop"]
+        }
+     
+    },
+     "ad": {
+        "aliases": ["ad", "active-directory"],
+        "actions": {
+            "collect": ["bloodhound", "bh"]
+        }
+     
+    }    
 }

@@ -10,13 +10,13 @@ def run(data, cred, args):
 
 
     if method == "sharphound":
-        return run_sharphound(data, cred)
+        return run_sharphound(data, cred, args)
 
     elif method == "python":
-        return run_bloodhound_python(data, cred)
+        return run_bloodhound_python(data, cred, args)
 
     elif method == "rusthound":
-        return run_rusthound(data, cred)
+        return run_rusthound(data, cred, args)
 
     else:
         print(f"[!] Unsupported method: {method}")
@@ -33,7 +33,7 @@ import subprocess
 from core.paths import get_tool_path, get_chain_artifacts_dir
 
 
-def run_sharphound(data, cred):
+def run_sharphound(data, cred, args):
     ip = data["ip"]
     target = data["name"]
 
@@ -60,7 +60,10 @@ def run_sharphound(data, cred):
         print(f"[!] SharpHound not found: {local_path}")
         return data
 
-    artifact_dir = get_chain_artifacts_dir(target, "bloodhound")
+    from pathlib import Path
+    
+    out_dir = Path(getattr(args, "out", None) or ".").expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     # -------------------
     # 1. Upload
@@ -107,8 +110,8 @@ def run_sharphound(data, cred):
     zipname = matches[-1]
     print(f"[+] Found zip: {zipname}")
 
-    # -------------------
-    # 4. Download (IMPORTANT FIX)
+   # -------------------
+    # 4. Download
     # -------------------
     download_cmd = (
         f'echo "download {zipname}" | '
@@ -117,18 +120,17 @@ def run_sharphound(data, cred):
 
     print(f"[*] Downloading {zipname}...")
 
-    # Force download INTO artifact dir
-    subprocess.run(download_cmd, shell=True, cwd=artifact_dir)
+    subprocess.run(download_cmd, shell=True, cwd=out_dir)
 
     # -------------------
     # 5. Verify
     # -------------------
-    dest = artifact_dir / zipname
+    dest = out_dir / zipname
 
     if dest.exists():
         print(f"[+] Saved to {dest}")
     else:
-        print("[!] Download failed (file not found in artifact dir)")
+        print("[!] Download failed")
 
     return data
 
@@ -137,16 +139,26 @@ def run_sharphound(data, cred):
 # -------------------
 # BLOODHOUND PYTHON (local)
 # -------------------
-def run_bloodhound_python(data, cred):
+def run_bloodhound_python(data, cred, args):
     target = data["name"]
 
     user = cred.get("user")
     secret = cred.get("secret")
+   
+    ip = data.get("ip")
     domain = data.get("domain")
-    dc = data.get("hostname")
-    ns = data.get("ip")
 
-    artifact_dir = get_chain_artifacts_dir(target, "bloodhound")
+    dc = f"{data.get('hostname')}.{domain}" if data.get("hostname") else ip
+
+    # fallback if hostname is bad
+    if not dc or "." not in dc:
+        dc = ip
+
+    ns = ip
+
+    from pathlib import Path
+    out_dir = Path(getattr(args, "out", None) or ".").expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = (
         f"bloodhound-ce-python --zip -c All "
@@ -162,8 +174,10 @@ def run_bloodhound_python(data, cred):
     # Move all produced zip files
     for file in os.listdir():
         if file.endswith(".zip"):
-            os.rename(file, os.path.join(artifact_dir, file))
-            print(f"[+] Saved {file} → {artifact_dir}")
+            src = Path(file)
+            dst = out_dir / file
+            src.rename(dst)
+            print(f"[+] Saved {file} → {dst}")
 
     return data
 
@@ -171,14 +185,16 @@ def run_bloodhound_python(data, cred):
 # -------------------
 # RUSTHOUND (local)
 # -------------------
-def run_rusthound(data, cred):
+def run_rusthound(data, cred, args):
     target = data["name"]
 
     user = cred.get("user")
     secret = cred.get("secret")
     domain = data.get("domain")
 
-    artifact_dir = get_chain_artifacts_dir(target, "bloodhound")
+    from pathlib import Path
+    out_dir = Path(getattr(args, "out", None) or ".").expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = (
         f"rusthound-ce "
@@ -192,8 +208,10 @@ def run_rusthound(data, cred):
     # Move output zip(s)
     for file in os.listdir():
         if file.endswith(".zip"):
-            os.rename(file, os.path.join(artifact_dir, file))
-            print(f"[+] Saved {file} → {artifact_dir}")
+            src = Path(file)
+            dst = out_dir / file
+            src.rename(dst)
+            print(f"[+] Saved {file} → {dst}")
 
     return data
 

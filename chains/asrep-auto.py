@@ -80,6 +80,6 @@ def run(args):
     print("[4/4] Import credentials")
 
     if confirm("Add new credentials to target?"):
-        run_module_by_name("parse.creds", [
+        run_module_by_name("parse.hash", [
             str(cracked)
         ], data)
