@@ -1,6 +1,6 @@
 ALIASES = {
     "target": {
-        "aliases": ["target", "t", "host", "hosts", "targets"],
+        "aliases": ["target", "t", "host", "hosts", "targets", "creds"],
         "actions": {
             "create": ["create", "create-target", "new", "new-target" "add", "add-target"],
             "list": ["list", "ls", "all"],

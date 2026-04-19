@@ -8,16 +8,13 @@ def parse_line(line):
         # -------------------
         if ":::" in line:
             parts = line.split(":")
-
             if len(parts) >= 4:
-                user = parts[0]
-                rid = parts[1]
-                nthash = parts[3]
-
-                if rid.isdigit():
-                    if nthash and nthash != "aad3b435b51404eeaad3b435b51404ee":
-                        return {"user": user, "type": "ntlm", "secret": nthash}
-
+                user = parts[0].split('\\')[-1] # Strip domain if present
+                nthash = parts[3] # Index 3 is the NT Hash
+                
+                # Only return if the NT hash actually exists and isn't empty
+                if len(nthash) == 32: 
+                    return {"user": user, "type": "ntlm", "secret": nthash}
         # -------------------
         # 2. AS-REP
         # -------------------
@@ -57,51 +54,17 @@ def parse_line(line):
 
 def run(data, cred, args):
     from pathlib import Path
-    import argparse
-    from core import target
-
     file = getattr(args, "file", None)
-
-    if not file:
-        print("[!] Missing --file")
-        return
+    if not file: return []
 
     path = Path(file).expanduser().resolve()
+    if not path.exists(): return []
 
-    if not path.exists():
-        print(f"[!] File not found: {path}")
-        return
-
-    lines = path.read_text().splitlines()
-
-    if not lines:
-        print("[!] No credentials found")
-        return
-
-    print("[*] Parsing credentials...\n")
-
-    added = 0
-
-    for line in lines:
+    found_creds = []
+    for line in path.read_text().splitlines():
         parsed = parse_line(line)
-
-        if not parsed:
-            continue
-
-        user = parsed["user"]
-        typ = parsed["type"]
-        secret = parsed["secret"]
-
-        print(f"[+] {user} ({typ}): {secret}")
-
-        target.target_add_cred(
-            argparse.Namespace(
-                user=user,
-                password=secret if typ == "password" else None,
-                hash=secret if typ == "ntlm" else None,
-                aes=None,
-                ccache=None
-            )
-        )
-
-        added += 1
+        if parsed:
+            found_creds.append(parsed)
+    
+    # Return the list instead of calling target_add_cred
+    return found_creds

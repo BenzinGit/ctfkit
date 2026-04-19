@@ -8,6 +8,7 @@ from core import runner
 from core.aliases import ALIASES
 from core import doctor
 from core.chain import run_chain_script
+from core.chain import run_chain_script, CHAINS_DIR
 
 # ---------------------- ALIAS RESOLVER ----------------------
 
@@ -45,28 +46,52 @@ def resolve_alias():
 
 
 def main():
-    # ---------------------- PREPROCESS ----------------------
 
-    # 1. Resolve aliases FIRST
-    resolved = resolve_alias()
+# ---------------------- PREPROCESS ----------------------
 
-    if resolved:
-        module, action = resolved
-
-        if module != "target":
-            extra = sys.argv[2:] if "." in sys.argv[1] else sys.argv[3:]
-            sys.argv = ["ctf", "run", f"{module}.{action}"] + extra
-
+# Helper function for our new Smart Router
+    
+    def route_command(target_name, extra_args):
+        # Convert dot to slash for the file check
+        path_name = target_name.replace(".", "/")
+        chain_path = CHAINS_DIR / f"{path_name}.py"
+        
+        if chain_path.exists():
+            print(f"\033[94m[*] Using Chain: {target_name}\033[0m")
+            return [sys.argv[0], "chain", target_name] + extra_args
         else:
-            sys.argv[1] = "target"
-            if len(sys.argv) > 2:
-                sys.argv[2] = action
+            return [sys.argv[0], "run", target_name] + extra_args
 
-    # 2. THEN handle module shorthand
-    elif len(sys.argv) > 1 and "." in sys.argv[1]:
-        module = sys.argv[1]
-        extra = sys.argv[2:]
-        sys.argv = ["ctf", "run", module] + extra
+    # 2. HANDLE COLON FORCE FIRST (Absolute Priority)
+    if len(sys.argv) > 1 and sys.argv[1].startswith(":"):
+        target_name = sys.argv[1][1:] # Strip the ':'
+        print(f"\033[93m[*] Forced Module Mode: {target_name}\033[0m")
+        sys.argv = [sys.argv[0], "run", target_name] + sys.argv[2:]
+
+    # 3. HANDLE ALIASES
+    else:
+        resolved = resolve_alias()
+        if resolved:
+            module, action = resolved
+            if module != "target":
+                target_name = f"{module}.{action}"
+                # Get extra args based on whether user used mod.action or mod action
+                extra = sys.argv[2:] if "." in sys.argv[1] else sys.argv[3:]
+                sys.argv = route_command(target_name, extra)
+            else:
+                sys.argv[1] = "target"
+                if len(sys.argv) > 2:
+                    sys.argv[2] = action
+
+        # 4. HANDLE STANDARD SHORTHAND (ad.kerberoast)
+        elif len(sys.argv) > 1 and "." in sys.argv[1]:
+            target_name = sys.argv[1]
+            extra = sys.argv[2:]
+            sys.argv = route_command(target_name, extra)    
+
+    
+
+    
 
     # ---------------------- CLI ----------------------
 
@@ -136,11 +161,17 @@ def main():
     chain_parser = subparsers.add_parser("chain")
     chain_parser.add_argument("name")
     chain_parser.add_argument("extra", nargs="*")
+    chain_parser.add_argument("--all", action="store_true") 
+    chain_parser.add_argument("--full", action="store_true") 
+
+    chain_parser.add_argument("--user")
     chain_parser.add_argument("--auto", action="store_true")
     chain_parser.add_argument("--quiet", action="store_true")
+    
     chain_parser.set_defaults(func=lambda args: run_chain_script(args))
     
     
+
 
 
 
@@ -165,6 +196,8 @@ def main():
     run_parser.add_argument("--file", "-f", "--in")
     run_parser.add_argument("--format")
     run_parser.add_argument("--mode")
+    run_parser.add_argument("--share")
+
     run_parser.add_argument("--method")
     run_parser.add_argument("--all", action="store_true")
     run_parser.add_argument("--save", action="store_true")

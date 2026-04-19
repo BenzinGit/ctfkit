@@ -52,9 +52,7 @@ def run_module(args):
     # execute
     result = module.run(data, cred, args)
 
-    # save if modified
-    if result:
-        save_profile(result, path)
+    return result    
 
 
 

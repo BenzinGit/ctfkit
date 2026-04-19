@@ -6,15 +6,18 @@ CHAINS_DIR = BASE_DIR / "chains"
 
 
 def run_chain_script(args):
-    chain_file = CHAINS_DIR / f"{args.name}.py"
+    # 1. Convert "ad.kerberoast" to "ad/kerberoast" so Linux can find the file
+    path_name = args.name.replace(".", "/")
+    chain_file = CHAINS_DIR / f"{path_name}.py"
 
     if not chain_file.exists():
-        available = [p.stem for p in CHAINS_DIR.glob("*.py")]
 
-        print(f"[!] Chain not found: {args.name}")
+        print(f"[!] Chain not found at: {chain_file}") 
+        available = [p.stem for p in CHAINS_DIR.rglob("*.py")] # rglob finds nested files
         print(f"[*] Available chains: {', '.join(available)}")
+        return 
 
-    spec = importlib.util.spec_from_file_location(args.name, chain_file)
+    spec = importlib.util.spec_from_file_location(path_name, chain_file)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 

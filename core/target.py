@@ -330,7 +330,7 @@ def target_add_cred(args):
 
     # ---------------- SAVE LOCAL ----------------
     data["creds"].append(new_cred)
-    data["current_cred"] = len(data["creds"]) - 1
+
 
     save_profile(data, path)
 
@@ -360,8 +360,11 @@ def target_add_cred(args):
             else:
                 print("[*] Credential already exists in domain")
 
-    target_creds(argparse.Namespace(local=False, domain=False))
 
+    target_set_cred(argparse.Namespace(identifier=args.user))
+    
+    target_creds(argparse.Namespace(local=False, domain=False))
+    
 
 def target_set_cred(args):
     try:
@@ -391,7 +394,8 @@ def target_set_cred(args):
             print("[!] Credential not found")
             return
 
-        idx = matches[0]
+        # THE FIX: Use [-1] to always select the most recently added match
+        idx = matches[-1] 
 
     data["current_cred"] = idx
     save_profile(data, path)
@@ -402,7 +406,7 @@ def target_set_cred(args):
 
     source_str = "Domain" if source == "domain" else "Local"
 
-    print(f"[+] Active credential set to [{idx}] {c['user']} ({typ}, {source_str})")
+    print(f"\033[92m[+] Active credential set to [{idx}] {c['user']} ({typ}, {source_str})\033[0m")
 
 
 def target_creds(args):
