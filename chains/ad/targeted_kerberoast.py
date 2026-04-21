@@ -19,7 +19,7 @@ def run(args):
     
     # We call the module and get the list back
     extracted_hashes = run_module_by_name("ad.targeted_kerberoast", [target_user], data)
-
+    print(extracted_hashes)
     if not extracted_hashes:
         print(f"[-] Failed to extract hashes for {target_user}")
         return

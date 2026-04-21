@@ -1,12 +1,19 @@
 import subprocess
 from pathlib import Path
 import argparse
+import os
+
 from core.target import target_add_cred
 
 
 def run(data, cred, args):
     """
     Authenticate via SMB using netexec
+
+    Supports:
+        - password auth
+        - spray (user/pass files)
+        - Kerberos (ccache)
 
     Usage:
         ctf auth.smb
@@ -33,14 +40,29 @@ def run(data, cred, args):
             print("[-] No active credential")
             return data
 
-        user = cred.get("user")
-        password = cred.get("secret")
+        # ---- Kerberos (ticket) ----
+        if cred.get("type") == "ticket" or cred.get("ccache"):
+            ccache = cred.get("ccache") or os.environ.get("KRB5CCNAME")
 
-        if not user or not password:
-            print("[-] Current credential not usable")
-            return data
+            if not ccache:
+                print("[-] No ccache found in credential or environment")
+                return data
 
-        cmd += ["-u", user, "-p", password]
+            # ensure environment is set
+            os.environ["KRB5CCNAME"] = ccache
+
+            cmd += ["-k", "--use-kcache"]
+
+        # ---- Password ----
+        else:
+            user = cred.get("user")
+            password = cred.get("secret")
+
+            if not user or not password:
+                print("[-] Current credential not usable")
+                return data
+
+            cmd += ["-u", user, "-p", password]
 
     # -------------------------
     # Mode 2: user/pass or files
@@ -70,13 +92,14 @@ def run(data, cred, args):
     print(f"[*] Running: {' '.join(cmd)}")
 
     # -------------------------
-    # Run (preserve colors)
+    # Run (visible)
     # -------------------------
     subprocess.run(cmd)
-    
+
+    # Only parse when spraying / explicit creds
     if len(extra) == 0:
-        return
-    
+        return data
+
     # -------------------------
     # Run again (capture for parsing)
     # -------------------------
@@ -119,7 +142,6 @@ def run(data, cred, args):
     for user, password in valid:
         print(f"[+] {user}:{password}")
 
-        # Skip if already current credential
         if user == current_user:
             print("[*] Already active credential")
             continue
@@ -134,9 +156,8 @@ def run(data, cred, args):
             )
         )
 
-
     # -------------------------
-    # Switch to new credential
+    # Switch to last valid cred
     # -------------------------
     from core.target import target_set_cred
 
@@ -147,9 +168,6 @@ def run(data, cred, args):
     )
 
     from core.target import load_current_profile
-
     data, _ = load_current_profile()
-    return data
-
 
     return data

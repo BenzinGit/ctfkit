@@ -289,7 +289,7 @@ def target_show(args):
 
 
 
-def target_add_cred(args):
+def target_add_cred(args, switch=True, show=True):
     try:
         data, path = load_current_profile()
     except Exception as e:
@@ -334,7 +334,6 @@ def target_add_cred(args):
 
     save_profile(data, path)
 
-    print(f"[+] Added {cred_type} credential for {args.user}")
 
     # ---------------- DOMAIN SYNC ----------------
     domain_name = data.get("domain")
@@ -359,11 +358,14 @@ def target_add_cred(args):
                 print(f"[+] Synced to domain")
             else:
                 print("[*] Credential already exists in domain")
-
-
-    target_set_cred(argparse.Namespace(identifier=args.user))
     
-    target_creds(argparse.Namespace(local=False, domain=False))
+    # ---------------- OPTIONAL SWITCH ----------------
+    if switch:
+        target_set_cred(argparse.Namespace(identifier=args.user))
+
+    # ---------------- OPTIONAL DISPLAY ----------------
+    if show:
+        target_creds(argparse.Namespace(local=False, domain=False))
     
 
 def target_set_cred(args):

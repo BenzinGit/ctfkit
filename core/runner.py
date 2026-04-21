@@ -101,7 +101,10 @@ def run_module_by_name(module_name, extra_args, data=None):
         cred = None
 
     # ---------------- RUN ----------------
-    return module.run(data, cred, args)
+    if getattr(args, "background", False):
+        return module.run(data, cred, args, background=True)
+    else:
+        return module.run(data, cred, args)
 
 
 def normalize_args(args):

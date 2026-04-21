@@ -2,7 +2,7 @@ def run(data, cred, args):
     ip = data.get("ip")
 
     if cred:
-        cmd = f"smbclient -L //{ip} -U {cred['user']}%{cred['pass']}"
+        cmd = f"smbclient -L //{ip} -U {cred['user']}%{cred['secret']}"
     else:
         cmd = f"smbclient -L //{ip} -N"
 

