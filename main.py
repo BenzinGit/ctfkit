@@ -16,25 +16,35 @@ def resolve_alias():
     if len(sys.argv) < 2:
         return None
 
-    cmd = sys.argv[1]
+    cmd1 = sys.argv[1]
+    cmd2 = sys.argv[2] if len(sys.argv) > 2 else None
 
-    if "." in cmd:
-        module, action = cmd.split(".", 1)
+    # -------------------------
+    # 1. dot syntax (ad.enum)
+    # -------------------------
+    if "." in cmd1:
+        module, action = cmd1.split(".", 1)
     else:
-        if len(sys.argv) < 3:
-            return None
-        module = sys.argv[1]
-        action = sys.argv[2]
+        module = cmd1
+        action = cmd2
 
+    # -------------------------
+    # 2. normal alias resolution
+    # -------------------------
     for mod_name, mod_data in ALIASES.items():
         if module in mod_data["aliases"]:
-
-            # normalize module
-            module = mod_name
+            if not action:
+                return None
 
             for action_name, action_aliases in mod_data["actions"].items():
                 if action in action_aliases:
-                    return module, action_name
+                    return mod_name, action_name
+
+       # 🔥 FLAT COMMAND SUPPORT
+    for mod_name, mod_data in ALIASES.items():
+        for action_name, action_aliases in mod_data["actions"].items():
+            if cmd1 in action_aliases:
+                return mod_name, action_name
 
     return None
 
@@ -47,49 +57,69 @@ def resolve_alias():
 
 def main():
 
-# ---------------------- PREPROCESS ----------------------
+    # ---------------------- PREPROCESS ----------------------
 
-# Helper function for our new Smart Router
-    
+        # ---------------------- PREPROCESS ----------------------
+
     def route_command(target_name, extra_args):
-        # Convert dot to slash for the file check
         path_name = target_name.replace(".", "/")
         chain_path = CHAINS_DIR / f"{path_name}.py"
-        
+
         if chain_path.exists():
             print(f"\033[94m[*] Using Chain: {target_name}\033[0m")
             return [sys.argv[0], "chain", target_name] + extra_args
         else:
             return [sys.argv[0], "run", target_name] + extra_args
 
-    # 2. HANDLE COLON FORCE FIRST (Absolute Priority)
-    if len(sys.argv) > 1 and sys.argv[1].startswith(":"):
-        target_name = sys.argv[1][1:] # Strip the ':'
-        print(f"\033[93m[*] Forced Module Mode: {target_name}\033[0m")
-        sys.argv = [sys.argv[0], "run", target_name] + sys.argv[2:]
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1]
 
-    # 3. HANDLE ALIASES
-    else:
-        resolved = resolve_alias()
-        if resolved:
-            module, action = resolved
-            if module != "target":
-                target_name = f"{module}.{action}"
-                # Get extra args based on whether user used mod.action or mod action
-                extra = sys.argv[2:] if "." in sys.argv[1] else sys.argv[3:]
+        # -------------------------
+        # 1. FORCE MODULE (:ad.xxx)
+        # -------------------------
+        if cmd.startswith(":"):
+            target_name = cmd[1:]
+            print(f"\033[93m[*] Forced Module Mode: {target_name}\033[0m")
+            sys.argv = [sys.argv[0], "run", target_name] + sys.argv[2:]
+
+        else:
+            resolved = resolve_alias()
+
+            # -------------------------
+            # 2. ALIASES
+            # -------------------------
+            if resolved:
+                module, action = resolved
+
+                if module == "target":
+                    cmd = sys.argv[1]
+
+                    # -------------------------
+                    # FULL FORM: ctf target create ...
+                    # -------------------------
+                    if cmd == "target":
+                        extra = sys.argv[3:]  # skip target + action
+
+                    # -------------------------
+                    # FLAT FORM: ctf create ...
+                    # -------------------------
+                    else:
+                        extra = sys.argv[2:]  # skip action only
+
+                    sys.argv = [sys.argv[0], "target", action] + extra
+
+                else:
+                    target_name = f"{module}.{action}"
+                    extra = sys.argv[2:]
+                    sys.argv = route_command(target_name, extra)
+
+            # -------------------------
+            # 3. DOT SYNTAX (ad.xxx)
+            # -------------------------
+            elif "." in cmd:
+                target_name = cmd
+                extra = sys.argv[2:]
                 sys.argv = route_command(target_name, extra)
-            else:
-                sys.argv[1] = "target"
-                if len(sys.argv) > 2:
-                    sys.argv[2] = action
-
-        # 4. HANDLE STANDARD SHORTHAND (ad.kerberoast)
-        elif len(sys.argv) > 1 and "." in sys.argv[1]:
-            target_name = sys.argv[1]
-            extra = sys.argv[2:]
-            sys.argv = route_command(target_name, extra)    
-
-    
 
     
 
@@ -146,9 +176,6 @@ def main():
     setcred.add_argument("identifier")
     setcred.set_defaults(func=target.target_set_cred)
 
-    add_domain = target_sub.add_parser("add-domain")
-    add_domain.add_argument("--domain", required=True)
-    add_domain.set_defaults(func=target.target_add_domain)
 
 
     # ---------------------- DOCTOR ----------------------

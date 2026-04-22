@@ -1,173 +1,74 @@
 import subprocess
-from pathlib import Path
-import argparse
 import os
 
-from core.target import target_add_cred
-
-
 def run(data, cred, args):
-    """
-    Authenticate via SMB using netexec
+    from core.target import load_current_profile
 
-    Supports:
-        - password auth
-        - spray (user/pass files)
-        - Kerberos (ccache)
-
-    Usage:
-        ctf auth.smb
-        ctf auth.smb user pass
-        ctf auth.smb users.txt passwords.txt
-    """
-
-    extra = getattr(args, "extra", []) or []
+    # --- ANSI PALETTE ---
+    G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+    BOLD = '\033[1m'
 
     ip = data.get("ip")
+    hostname = data.get("hostname")
     domain = data.get("domain")
+    target = hostname if hostname else ip
 
     if not ip:
-        print("[-] Target missing IP")
+        print(f"\n{R}[!] {W}{BOLD}AUTH FAILURE{W}\n{R}  └── {W}Target IP missing.")
         return data
 
-    cmd = ["netexec", "smb", ip]
+    if not cred:
+        print(f"\n{R}[!] {W}{BOLD}AUTH FAILURE{W}\n{R}  └── {W}No credential loaded.")
+        return data
 
     # -------------------------
-    # Mode 1: No args → current cred
+    # AUTH LOGIC & COMMAND
     # -------------------------
-    if len(extra) == 0:
-        if not cred:
-            print("[-] No active credential")
-            return data
+    cmd = ["netexec", "smb", target]
+    env = os.environ.copy()
+    
+    user = cred.get("user")
+    ctype = cred.get("type", "").lower()
+    secret = cred.get("secret")
+    ccache = cred.get("ccache")
+    
+    auth_label = "PASSWORD"
 
-        # ---- Kerberos (ticket) ----
-        if cred.get("type") == "ticket" or cred.get("ccache"):
-            ccache = cred.get("ccache") or os.environ.get("KRB5CCNAME")
-
-            if not ccache:
-                print("[-] No ccache found in credential or environment")
-                return data
-
-            # ensure environment is set
-            os.environ["KRB5CCNAME"] = ccache
-
-            cmd += ["-k", "--use-kcache"]
-
-        # ---- Password ----
-        else:
-            user = cred.get("user")
-            password = cred.get("secret")
-
-            if not user or not password:
-                print("[-] Current credential not usable")
-                return data
-
-            cmd += ["-u", user, "-p", password]
-
-    # -------------------------
-    # Mode 2: user/pass or files
-    # -------------------------
-    elif len(extra) >= 2:
-        user_input = extra[0]
-        pass_input = extra[1]
-
-        user_path = Path(user_input)
-        pass_path = Path(pass_input)
-
-        # spray mode
-        if user_path.exists() and pass_path.exists():
-            cmd += ["-u", str(user_path), "-p", str(pass_path)]
-
-        # single credential
-        else:
-            cmd += ["-u", user_input, "-p", pass_input]
-
+    # 1. Kerberos Logic
+    if ctype in ["ticket", "ccache"] or ccache:
+        auth_label = "KERBEROS"
+        env["KRB5CCNAME"] = str(ccache if ccache else secret)
+        cmd += ["-u", user, "-p", "''", "-k", "--use-kcache"]
+    
+    # 2. Hash Logic
+    elif ctype in ["ntlm", "hash"]:
+        auth_label = "NTLM HASH"
+        cmd += ["-u", user, "-H", secret]
+    
+    # 3. Plaintext Logic
     else:
-        print("[-] Usage: ctf auth.smb user pass OR users.txt passwords.txt")
-        return data
+        cmd += ["-u", user, "-p", secret]
 
     if domain:
         cmd += ["-d", domain]
 
-    print(f"[*] Running: {' '.join(cmd)}")
+    # --- UI OUTPUT ---
+    print(f"\n{B}[{W}{G}*{W}{B}]{W} {BOLD}PHASE: SMB AUTHENTICATION ({auth_label}){W}")
+    print(f"{B}  ├── {B}Target:{W}   {C}{target}{W}")
+    print(f"{B}  └── {B}User:{W}     {G}{user}{W}")
+    
+    if auth_label == "KERBEROS":
+        print(f"{B}  └── {B}Ticket:{W}   {Y}{env.get('KRB5CCNAME')}{W}")
+
+    print(f"\n{B}[{G}*{B}]{W} {BOLD}Executing:{W} {Y}{' '.join(cmd)}{W}\n")
 
     # -------------------------
-    # Run (visible)
+    # EXECUTION
     # -------------------------
-    subprocess.run(cmd)
-
-    # Only parse when spraying / explicit creds
-    if len(extra) == 0:
-        return data
-
-    # -------------------------
-    # Run again (capture for parsing)
-    # -------------------------
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True
-    )
-
-    output = result.stdout + result.stderr
-
-    # -------------------------
-    # Parse valid creds
-    # -------------------------
-    valid = []
-
-    for line in output.splitlines():
-        if "[+]" in line and "\\" in line and ":" in line:
-            try:
-                part = line.split()[-1]  # domain\user:pass
-                domain_user, password = part.split(":", 1)
-
-                if "\\" in domain_user:
-                    user = domain_user.split("\\")[1]
-                else:
-                    user = domain_user
-
-                valid.append((user, password))
-            except:
-                continue
-
-    if not valid:
-        print("[-] No valid credentials found")
-        return data
-
-    print("\n[+] Valid credentials:\n")
-
-    current_user = cred.get("user") if cred else None
-
-    for user, password in valid:
-        print(f"[+] {user}:{password}")
-
-        if user == current_user:
-            print("[*] Already active credential")
-            continue
-
-        target_add_cred(
-            argparse.Namespace(
-                user=user,
-                password=password,
-                hash=None,
-                aes=None,
-                ccache=None
-            )
-        )
-
-    # -------------------------
-    # Switch to last valid cred
-    # -------------------------
-    from core.target import target_set_cred
-
-    target_set_cred(
-        argparse.Namespace(
-            identifier=user
-        )
-    )
-
-    from core.target import load_current_profile
-    data, _ = load_current_profile()
+    try:
+        # Straight execution, no capturing, no double-runs.
+        subprocess.run(cmd, env=env)
+    except KeyboardInterrupt:
+        print(f"\n{R}[!] {W}Cancelled.")
 
     return data
