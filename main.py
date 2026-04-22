@@ -59,9 +59,19 @@ def main():
 
     # ---------------------- PREPROCESS ----------------------
 
-        # ---------------------- PREPROCESS ----------------------
-
     def route_command(target_name, extra_args):
+        # -------------------------
+        # SHELL SPECIAL CASE
+        # -------------------------
+        if target_name == "shell":
+            if not extra_args:
+                extra_args = ["bash"]
+
+            return [sys.argv[0], "run", "shell.generate"] + extra_args
+
+        # -------------------------
+        # NORMAL ROUTING
+        # -------------------------
         path_name = target_name.replace(".", "/")
         chain_path = CHAINS_DIR / f"{path_name}.py"
 
@@ -71,13 +81,21 @@ def main():
         else:
             return [sys.argv[0], "run", target_name] + extra_args
 
+
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
 
         # -------------------------
+        # 0. SHELL DIRECT COMMAND
+        # -------------------------
+        if cmd == "shell":
+            extra = sys.argv[2:]
+            sys.argv = route_command("shell", extra)
+
+        # -------------------------
         # 1. FORCE MODULE (:ad.xxx)
         # -------------------------
-        if cmd.startswith(":"):
+        elif cmd.startswith(":"):
             target_name = cmd[1:]
             print(f"\033[93m[*] Forced Module Mode: {target_name}\033[0m")
             sys.argv = [sys.argv[0], "run", target_name] + sys.argv[2:]
@@ -94,17 +112,11 @@ def main():
                 if module == "target":
                     cmd = sys.argv[1]
 
-                    # -------------------------
                     # FULL FORM: ctf target create ...
-                    # -------------------------
                     if cmd == "target":
-                        extra = sys.argv[3:]  # skip target + action
-
-                    # -------------------------
-                    # FLAT FORM: ctf create ...
-                    # -------------------------
+                        extra = sys.argv[3:]
                     else:
-                        extra = sys.argv[2:]  # skip action only
+                        extra = sys.argv[2:]
 
                     sys.argv = [sys.argv[0], "target", action] + extra
 
@@ -228,6 +240,10 @@ def main():
     run_parser.add_argument("--method")
     run_parser.add_argument("--all", action="store_true")
     run_parser.add_argument("--save", action="store_true")
+
+    run_parser.add_argument("--lhost")
+    run_parser.add_argument("--lport")
+
     run_parser.set_defaults(func=runner.run_module)
 
     args = parser.parse_args()
