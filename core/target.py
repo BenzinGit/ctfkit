@@ -117,6 +117,7 @@ def target_use(args):
 
 def target_create(args):
     path = get_profile_path(args.name)
+    url = getattr(args, "url", None)
 
     if path.exists():
         # Using RED for Aborted, Blue for structure, Yellow for commands
@@ -132,7 +133,9 @@ def target_create(args):
         "creds": [],
         "notes": [],
         "current_cred": None,
-        "hostname": None
+        "hostname": None,
+        "urls": [url] if url else [],
+        "current_url": 0 if url else None,
     }
 
     save_profile(data, path)
@@ -145,12 +148,17 @@ def target_create(args):
     print(f"\n{B}[{W}{G}*{W}{B}]{W} {BOLD}TARGET CREATED{W}")
     print(f"{B}  ├── {B}Name:{W}    {C}{args.name}{W}")
     print(f"{B}  ├── {B}IP:{W}      {C}{args.ip}{W}")
-    
+
     if args.domain:
-        print(f"{B}  └── {B}Domain:{W}  {B}{args.domain.lower()}{W}")
+        print(f"{B}  ├── {B}Domain:{W}  {C}{args.domain.lower()}{W}")
     else:
-        print(f"{B}  └── {B}Domain:{W}  None{W}")
-    
+        print(f"{B}  ├── {B}Domain:{W}  None{W}")
+
+    if url:
+        print(f"{B}  └── {B}URL:{W}     {C}{url}{W}")
+    else:
+        print(f"{B}  └── {B}URL:{W}     None{W}")
+
     print(f"\n{G}┌── CONTEXT CHANGED ───────────────────────────────────────┐{W}")
     print(f"{G}│{W}  Target context has been set to: {C}{args.name:<24}{W}{G}│{W}")
     print(f"{G}└──────────────────────────────────────────────────────────┘{W}\n")
@@ -273,42 +281,56 @@ def target_show(args):
         print(f"\n{R}[!] {W}No active profile loaded.")
         return
 
-    name = data.get('name', 'UNKNOWN').upper()
-    
-    # Define the "Checklist" - Key: (Value, SuccessColor)
-    # If Value is None/Empty, it renders as DIM N/A
-    fields = {
-        "Hostname":   (data.get("hostname"), C),
-        "IP Address": (data.get("ip"), C),
-        "Domain":     (data.get("domain"), B),
-        "OS Version": (data.get("os"), Y),
-        "Target URL": (data.get("url"), C),
-        "Role":(data.get("role"), R), # e.g. Domain Controller
-        "Notes":(data.get("note"), W), 
+    name = data.get("name", "UNKNOWN").upper()
 
+    # ---------------- GENERAL FIELDS ----------------
+    fields = {
+        "Hostname": data.get("hostname"),
+        "IP Address": data.get("ip"),
+        "Domain": data.get("domain"),
+        "OS Version": data.get("os"),
+        "Role": data.get("role"),
     }
 
-    # --- THE HUD ---
-    print(f"\n{B}┌── {BOLD}MISSION BRIEF: {C}{name}{W}{B} ───────────────────────────────┐{W}")
-    
-    for label, (val, color) in fields.items():
-        # Logic: If value exists, use its color. If not, use DIM + N/A.
+    # ---------------- HEADER ----------------
+    print(f"\n{B}┌── {BOLD}TARGET INFO: {C}{name}{W}{B} ────────────────────────────────┐{W}")
+
+    # ---------------- GENERAL INFO ----------------
+    for label, val in fields.items():
         if val:
-            display_val = f"{color}{val:<36}{W}"
+            display_val = f"{C}{val:<36}{W}"
         else:
             display_val = f"{DIM}{'N/A':<36}{W}"
-            
-        print(f"{B}│{W}  {B}{label+':':<14}{W} {display_val} {B}│{W}")
 
+        print(f"{B}│{W}  {B}{label+':':<14}{W} {display_val} {B}│{W}")
 
     print(f"{B}└──────────────────────────────────────────────────────┘{W}")
 
-    # --- FOOTER & CREDS ---
+    urls = data.get("urls", [])
+
+    if urls:
+        print_urls_table(data)
+    
+
+    # ---------------- NOTES SECTION ----------------
+    notes = data.get("notes", [])
+
+    if notes:
+        print(f"\n{B}┌── {BOLD}NOTES{W}{B} ─────────────────────────────────────────────┐{W}")
+
+        for n in notes:
+            print(f"{B}│{W}  {W}{n:<46}{W} {B}│{W}")
+
+        print(f"{B}└──────────────────────────────────────────────────────────┘{W}")
+
+
+    # ---------------- CREDS ----------------
     all_creds = get_all_creds(data)
+
     if all_creds:
         print_creds_table(all_creds, data.get("current_cred"))
     else:
-        print(f"  {B}└──{W} {DIM}No credentials stored in profile.{W}\n")
+        print(f"\n  {B}└──{W} {DIM}No credentials stored in profile.{W}\n")
 
 
 
@@ -528,7 +550,46 @@ def get_all_creds(data):
 
     return combined
 
+def print_urls_table(data):
+    # --- ANSI PALETTE ---
+    G, C, B, Y, W = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m'
+    BOLD, DIM = '\033[1m', '\033[2m'
+    GREY = '\033[38;5;244m'
 
+    urls = data.get("urls", [])
+    active_idx = data.get("current_url")
+
+    if not urls:
+        print(f"\n{B}  └── {DIM}No URLs found.{W}")
+        return
+
+    # ---------------- WIDTHS ----------------
+    id_w = max(len(str(len(urls))), 2)
+    url_w = max(max(len(u) for u in urls), 30)
+
+    # ---------------- HEADER ----------------
+    header_text = f"   {'ID':<{id_w}}  {'URL':<{url_w}}"
+    total_w = len(header_text) + 2
+
+    print(f"\n{B}┌── TARGET URLS {'─' * (total_w - 15)}┐{W}")
+    print(f"{B}│{W} {BOLD}{header_text} {B}│{W}")
+    print(f"{B}├{'─' * (total_w)}┤{W}")
+
+    # ---------------- ROWS ----------------
+    for i, url in enumerate(urls):
+        is_active = (i == active_idx)
+
+        marker = f"{G}▶{W}" if is_active else " "
+
+        id_part = f"{(BOLD+G if is_active else GREY)}{str(i):<{id_w}}{W}"
+        url_part = f"{(BOLD+C if is_active else GREY)}{url:<{url_w}}{W}"
+
+        print(f"{B}│{W}  {marker} {id_part}  {url_part} {B}│{W}")
+
+    print(f"{B}└{'─' * (total_w)}┘{W}")
+
+    # ---------------- FOOTER ----------------
+    print(f"  {B}└──{W} {BOLD}Total URLs:{W} {G}{len(urls)}{W}\n")
 
 
 def target_whoami(args):
@@ -569,3 +630,80 @@ def target_whoami(args):
     print(f"{B}│{W}  {B}{'Domain:':<14}{W} {B}{domain:<36}{W} {B}│{W}")
     
     print(f"{B}└──────────────────────────────────────────────────────┘{W}\n")
+
+
+def target_set_url(args):
+    G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+
+    try:
+        data, path = load_current_profile()
+    except:
+        print(f"{R}[!] No active target{W}")
+        return
+
+    idx = args.index
+    urls = data.get("urls", [])
+
+    if idx < 0 or idx >= len(urls):
+        print(f"{R}[!] Invalid index{W}")
+        return
+
+    data["current_url"] = idx
+    save_profile(data, path)
+
+    print(f"{G}[+] Active URL set:{W} {C}{urls[idx]}{W}")
+
+
+def target_add_url(args):
+    # --- ANSI ---
+    G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+
+    try:
+        data, path = load_current_profile()
+    except:
+        print(f"\n{R}[!] {W}No active target selected.")
+        return
+
+    url = args.url.strip()
+
+    if not url:
+        print(f"{R}[!] Invalid URL")
+        return
+
+    # init if missing (backward compatibility)
+    if "urls" not in data:
+        data["urls"] = []
+
+    if "current_url" not in data:
+        data["current_url"] = None
+
+    # prevent duplicates
+    if url in data["urls"]:
+        print(f"{Y}[!] URL already exists:{W} {C}{url}{W}")
+        return
+
+    data["urls"].append(url)
+
+    # set as active
+    data["current_url"] = len(data["urls"]) - 1
+
+    save_profile(data, path)
+
+    print(f"\n{G}[+] URL added{W}")
+    print(f"{B}  ├── {B}URL:{W}     {C}{url}{W}")
+    print(f"{B}  └── {B}Active:{W}  index {data['current_url']}")    
+
+
+
+def get_current_url(data):
+    urls = data.get("urls", [])
+    idx = data.get("current_url")
+
+    if not urls:
+        return None
+
+    # fallback safety
+    if idx is None or idx >= len(urls):
+        return urls[0]
+
+    return urls[idx]

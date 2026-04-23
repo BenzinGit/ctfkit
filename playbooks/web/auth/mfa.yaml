@@ -1,0 +1,84 @@
+name: web.auth.mfa
+
+steps:
+
+  - id: mfa_bypass
+    title: Bypass 2FA (Skip Step)
+
+    info: |
+      Check if the application grants access after password login
+      without verifying the second factor.
+
+    checklist:
+      - Log in with valid credentials
+      - Stop at 2FA prompt
+      - Try accessing protected endpoints directly
+      - Try /my-account or similar
+
+    commands:
+      - "GET {url}/my-account"
+      - "Manually change URL after login"
+
+
+  - id: mfa_logic_flaw
+    title: 2FA Broken Logic (Account Mismatch)
+
+    info: |
+      Check if the 2FA step is tied to the correct user.
+
+    checklist:
+      - Inspect 2FA request parameters (verify, account, user)
+      - Check cookies assigned after login
+      - Try modifying user identifier before submitting code
+      - Attempt switching to another user (e.g. carlos)
+
+    commands:
+      - "Intercept POST /login2"
+      - "Modify parameter: verify=carlos"
+      - "Resend request in Burp Repeater"
+
+    notes:
+      - If successful → you can target arbitrary users
+
+
+  - id: mfa_bruteforce
+    title: Brute Force 2FA Code
+
+    info: |
+      Attempt to brute-force the verification code.
+
+    checklist:
+      - Identify code length (4 or 6 digits)
+      - Check for rate limiting / lockouts
+      - Observe responses for success indicators (302)
+      - Try multiple attempts
+
+    commands:
+      - "Send POST /login2 to Burp Intruder"
+      - "Fuzz mfa-code parameter"
+      - "Use payload: 000000–999999"
+      - "Look for 302 response"
+
+    notes:
+      - Weak protection → trivial compromise
+
+
+  - id: mfa_bruteforce_bypass
+    title: Bypass 2FA Brute-Force Protection
+
+    info: |
+      Some apps reset attempts or can be bypassed with automation.
+
+    checklist:
+      - Check if session resets after logout
+      - Try re-authentication loops
+      - Use Burp macros to automate full login flow
+      - Test Turbo Intruder for speed
+
+    commands:
+      - "Configure Burp macro (login + 2FA)"
+      - "Automate repeated attempts"
+      - "Use Turbo Intruder"
+
+    notes:
+      - Logging out is not real protection
