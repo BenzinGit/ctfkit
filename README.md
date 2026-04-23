@@ -1,27 +1,58 @@
 # ctfkit
-A modular CLI toolkit for managing targets, credentials, and automating CTF and Active Directory workflows.
+ctfkit is a modular CLI for pentesting that removes the need to constantly retype commands, credentials, and target details. It uses stored context (targets, creds, URLs) to automatically build and run commands for you, while still keeping you in control. Playbooks guide what to test, and modules handle the repetitive execution.
+
+A modular CLI toolkit for CTF and pentesting workflows, combining:
+
+- target management
+- credential tracking
+- modular execution
+- shell generation
+- structured playbooks (methodology engine)
 
 ---
 
-## ⚠️ Warning
 
-This tool stores credentials locally in JSON files.
+## Core Concept
+ctfkit is built around three layers:
 
-Do NOT commit the following directories:
-- `profiles/`
-- `domains/`
+### Targets
+Store all context:
 
-Make sure they are included in your `.gitignore`.
+- IP, domain, URLs
+- credentials
+- notes
+
+### Modules
+Small, reusable actions:
+
+
+```bash
+ctf smb.enum
+ctf nmap.scan
+ctf shell.generate
+```
+
+### Playbooks 
+Structured attack workflows:
+
+```bash
+ctf play web.auth.password
+```
 
 ---
 
 ## Features
 
-- Target management (`create`, `use`, `show`)
-- Credential handling (local + domain-aware)
-- Modular execution system (`smb`, `nmap`, etc.)
-- Alias-based CLI for fast workflows
-- Active identity tracking (`whoami`)
+- Target & profile system
+- Credential management (active identity tracking)
+- URL management (multi-target web workflows)
+- Modular execution engine
+- Alias-based CLI (fast commands)
+- Shell generation system (reverse shells, webshells)
+- Artifacts system (auto-save outputs)
+- Playbook system (checklists + commands + optional execution)
+- Chain support (multi-step automation)
+
 
 ---
 
@@ -29,67 +60,126 @@ Make sure they are included in your `.gitignore`.
 
 ### Create target
 ```bash
-ctf target create box --ip 10.2.10.10
-```
-### Add domain
-
-```bash
-ctf target add-domain --domain domain.htb
+ctf create box --ip 10.10.10.10 --url http://box.local
 ```
 
-### Add credentials
+### Switch target
 
 ```bash
-ctf target ctf target add-cred user 'password'
+ctf target use box
 ```
-### Show credentials
-```bash
-ctf target creds
-ctf target creds --local
-ctf target creds --domain
-```
-### Set active credential
+
+### URLs
 
 ```bash
-ctf target set-cred 1
-ctf target set-cred username
+ctf add-url http://admin.box.local
+ctf set-url 1
+```
+
+### Credentials
+
+```bash
+ctf add-cred user 'password'
+ctf cred
+ctf set-cred 0
+```
+
+### Target info
+```bash
+ctf info
 ```
 
 ### Who am I
 ```bash
 ctf whoami
 ```
+### Run modules 
 
-### Run modules
 ```bash
-ctf smb.list
-ctf smb.connect sysvol
+ctf smb.connect 'Department'
 ctf nmap.scan
-ctf nmap.fast
+ctf win.upload sharphound.exe
+ctf ad.dcsync
+ctf shell php
 ```
---- 
 
-## Structure
+### Playbooks
+
+```bash
+ctf play web.auth.password
+ctf play web.auth.mfa
+ctf play web.auth.other
+```
+Inside playbooks you can:
+
+- navigate steps
+- view payloads/commands
+- mark steps complete
+- jump between steps
+- execute modules (optional)
+
+---
+
+## Example Workflow
+### Manual
+```bash
+ctf target create lab --ip 10.10.10.10 --domain domain.local
+ctf target add-cred robert 'password123!'
+
+ctf :ad.kerberoast
+ctf :crack.hash kerberoast_hashes.txt
+ctf :parse.hash cracked.txt
+```
+
+### Automatic (chain)
+```bash
+ctf target create lab --ip 10.10.10.10 --domain domain.local
+ctf target add-cred robert 'password123!'
+
+ctf ad.kerberoast
+```
+
+---
+## Project Structure
 ```
 core/
-  target.py
-  runner.py
-  aliases.py
+  target.py        # profiles, creds, urls
+  runner.py        # module execution
+  playbook.py      # playbook engine
+  aliases.py       # CLI shortcuts
+  attacker.py      # lhost resolution
+  chain.py         # chain execution
+  
 
 modules/
   smb/
   nmap/
-  util/
+  shell/
+  ad/
+  win/
+  web/
+  ...
 
-profiles/   # ignored
-domains/    # ignored
+playbooks/
+  web/
+    auth/
+      password.yaml
+      mfa.yaml
+      other.yaml
+
+artifacts/         # output storage
+profiles/          # targets
 ```
-## Notes
 
-This project is under active development and mainly intended for:
+---
 
-- CTF practice
-- Learning pentesting workflows
-- Building modular tooling
+## Status
 
+Active development.
+
+Current focus:
+
+- Web exploitation workflows 
+- Playbook system expansion
+- Better module/playbook integration
 
