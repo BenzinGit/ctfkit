@@ -47,6 +47,7 @@ def load_playbook(name):
 def render_text(text, data):
     from core.target import get_current_url, get_active_cred
 
+    
     url = get_current_url(data)
 
     cred = get_active_cred(data) or {}
@@ -109,9 +110,15 @@ def run_playbook(args):
                 print(f"  {Y}#{W} {render_text(cmd, data)}")
 
         if step.get("payloads"):
-            print(f"\n{G}── PAYLOADS ───────────────────────────────────────────{W}")
+            print(f"\n{R}── PAYLOADS ───────────────────────────────────────────{W}")
             for p in step["payloads"]:
-                print(f"  {G}→{W} {BOLD}{p}{W}")
+                print(f"  {R}→{W} {BOLD}{p}{W}")
+
+
+        if step.get("success"):
+            print(f"\n{G}── SUCCESS ───────────────────────────────────────────{W}")
+            for p in step["success"]:
+                print(f"  {G}→{W} {BOLD}{p}{W}")        
 
         # 4. ACTION HUD (The footer)
         print(f"\n{B}───────────────────────────────────────────────────────{W}")

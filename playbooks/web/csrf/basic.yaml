@@ -1,0 +1,138 @@
+name: web.csrf.basic
+
+steps:
+
+  - id: identify_state_change
+    title: Identify State-Changing Request
+
+    info: |
+      Locate a request that performs an action on behalf of the user.
+
+    checklist:
+      - Perform action (change email, password, etc.)
+      - Capture request in Burp Proxy
+      - Confirm request is required for action
+
+    commands:
+      - Intercept request in Burp Proxy
+      - Send to Repeater
+
+
+  - id: test_csrf_no_defense
+    title: Test CSRF (No Defenses)
+
+    info: |
+      Check if the request can be executed without CSRF protection.
+
+    checklist:
+      - Remove CSRF token (if present)
+      - Replay request in browser context
+      - Confirm action still succeeds
+
+    commands:
+      - Remove token parameter
+      - Resend request
+
+
+  - id: generate_csrf_poc
+    title: Generate CSRF PoC (Burp)
+
+    info: |
+      Use Burp to automatically generate a CSRF exploit.
+
+    checklist:
+      - Right-click request
+      - Select Generate CSRF PoC
+      - Enable auto-submit
+
+    commands:
+      - Burp → Engagement tools → Generate CSRF PoC
+
+
+  - id: manual_csrf_poc
+    title: Create CSRF PoC (Manual)
+
+    info: |
+      Manually craft an HTML form to trigger the request.
+
+    checklist:
+      - Create form with correct method and action
+      - Add hidden inputs for parameters
+      - Add auto-submit script
+
+    commands:
+      - |
+        <form method="POST" action="{url}/endpoint">
+          <input type="hidden" name="param" value="value">
+        </form>
+        <script>document.forms[0].submit();</script>
+
+
+  - id: deliver_csrf_external
+    title: Deliver CSRF (External Page)
+
+    info: |
+      Host exploit on attacker-controlled page.
+
+    checklist:
+      - Host HTML on exploit server or local page
+      - Open page while authenticated
+      - Confirm request is triggered
+
+    commands:
+      - Paste exploit into page
+      - Open in browser
+
+
+  - id: test_get_csrf
+    title: Test CSRF via GET
+
+    info: |
+      Check if request can be performed using GET.
+
+    checklist:
+      - Convert request to GET
+      - Move parameters into URL
+      - Test in browser
+
+    commands:
+      - "GET {url}/endpoint?param=value"
+
+    success:
+      - Action executed via URL only
+
+
+  - id: csrf_via_image
+    title: CSRF via Image Tag
+
+    info: |
+      Trigger request automatically using an image.
+
+    checklist:
+      - Create img tag with target URL
+      - Load page in browser
+      - Confirm request sent
+
+    commands:
+      - '<img src="{url}/endpoint?param=value">'
+
+    success:
+      - Request triggered without interaction
+
+
+  - id: csrf_via_link
+    title: CSRF via Direct Link
+
+    info: |
+      Use a crafted URL to trigger the action.
+
+    checklist:
+      - Create malicious URL with parameters
+      - Send to victim or open directly
+      - Confirm action executes
+
+    commands:
+      - "https://target/endpoint?param=value"
+
+    success:
+      - Action executed on page load
