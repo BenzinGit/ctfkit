@@ -47,11 +47,26 @@ def run(data, cred, args):
             cmd_parts += ["-u", user, "-p", secret_val]
     else:
         # Null Session
-        cmd_parts += ["-u", "''", "-p", "''"]
+        cmd = f"smbclient -L //{ip} -N"
+
+         # --- UI OUTPUT ---
+        print(f"\n{B}[{W}{G}*{W}{B}]{W} {BOLD}SMB SHARE ENUMERATION SMBCLIENT NULL SESSION{W}")
+        print(f"{B}  ├── {B}Target:{W}   {C}{target}{W}")
+        print(f"{B}  └── {B}Auth:{W}     {G}{auth_type}{W}")
+        print(f"\n{W}[*] Executing:{Y} {cmd}\n{W}")
+
+        try:
+            # NetExec output is already beautiful, so we just let it rip
+            subprocess.run(cmd, shell=True, env=env)
+            return
+        except KeyboardInterrupt:
+            print(f"\n{R}[!] {W}Cancelled by operator.")
+            return
 
     # Add domain if we have it
     if domain:
         cmd_parts += ["-d", domain]
+
 
     cmd = " ".join(cmd_parts)
 
@@ -62,7 +77,6 @@ def run(data, cred, args):
     
     if "KERBEROS" in auth_type:
         print(f"{B}  └── {B}Ticket:{W}   {Y}{env.get('KRB5CCNAME')}{W}")
-
     print(f"\n{W}[*] Executing:{Y} {cmd}\n{W}")
 
     # --- EXECUTION ---

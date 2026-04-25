@@ -615,7 +615,7 @@ def target_whoami(args):
     # Box Width to match your Mission Brief
     width = 54
 
-    print(f"\n{B}┌── ACTIVE SESSION: {'─' * (width - len(user) - 9)}┐{W}")
+    print(f"\n{B}┌── ACTIVE SESSION: ───────────────────────────────────┐{W}")
     
     # 1. Identity Section
     print(f"{B}│{W}  {B}{'Username:':<14}{W} {W}{BOLD}{user:<36}{W} {B}│{W}")

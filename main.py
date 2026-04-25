@@ -246,6 +246,7 @@ def main():
     run_parser.add_argument("--format")
     run_parser.add_argument("--mode")
     run_parser.add_argument("--share")
+    run_parser.add_argument("--windows-auth", action="store_true")
 
     run_parser.add_argument("--method")
     run_parser.add_argument("--all", action="store_true")

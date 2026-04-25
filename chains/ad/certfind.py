@@ -2,7 +2,6 @@ def run(args):
     from core.runner import run_module_by_name
     from core.target import load_current_profile, save_profile
     from core.paths import get_chain_artifacts_dir
-
     import json
 
     data, path = load_current_profile()
@@ -14,7 +13,6 @@ def run(args):
     # -------------------------
     artifacts = get_chain_artifacts_dir(data["name"], "certfind")
 
-    # Clean old JSON files
     for f in artifacts.glob("*_Certipy.json"):
         f.unlink()
 
@@ -25,7 +23,7 @@ def run(args):
     run_module_by_name("ad.certfind", module_args, data)
 
     # -------------------------
-    # Find JSON file
+    # Locate JSON
     # -------------------------
     json_files = sorted(artifacts.glob("*_Certipy.json"))
 
@@ -34,11 +32,10 @@ def run(args):
         return
 
     json_path = json_files[-1]
-
     print(f"[*] Step 2: Parsing {json_path.name}...")
 
     # -------------------------
-    # Load JSON
+    # Load JSON safely
     # -------------------------
     try:
         certipy_data = json.loads(json_path.read_text())
@@ -47,30 +44,42 @@ def run(args):
         return
 
     # -------------------------
-    # Extract ADCS data
+    # Normalize structures
+    # -------------------------
+    def safe_dict(obj):
+        return obj if isinstance(obj, dict) else {}
+
+    cas = safe_dict(certipy_data.get("Certificate Authorities"))
+    templates = safe_dict(certipy_data.get("Certificate Templates"))
+
+    # -------------------------
+    # Extract ADCS info
     # -------------------------
     adcs = {
         "ca": None,
+        "ca_vulns": [],
         "templates": []
     }
 
     # -------------------------
-    # Extract CA
+    # Extract CA + vulns
     # -------------------------
-    cas = certipy_data.get("Certificate Authorities", {})
-
     for ca in cas.values():
         adcs["ca"] = ca.get("CA Name")
-        break
+
+        vulns = safe_dict(ca.get("[!] Vulnerabilities"))
+        for vuln_name in vulns.keys():
+            adcs["ca_vulns"].append(vuln_name)
+
+        break  # only one CA usually
 
     # -------------------------
-    # Extract templates
+    # Extract template vulns
     # -------------------------
-    templates = certipy_data.get("Certificate Templates", {})
-
     for tpl in templates.values():
         name = tpl.get("Template Name")
-        vulns = tpl.get("[!] Vulnerabilities", {})
+
+        vulns = safe_dict(tpl.get("[!] Vulnerabilities"))
 
         for vuln_name in vulns.keys():
             adcs["templates"].append({
@@ -79,13 +88,28 @@ def run(args):
             })
 
     # -------------------------
-    # Store in target
+    # Store in profile
     # -------------------------
     data.setdefault("adcs", {})
     data["adcs"] = adcs
-
     save_profile(data, path)
 
-    print("\n[+] ADCS info stored:")
-    print(f"    CA: {adcs['ca']}")
-    print(f"    Templates: {len(adcs['templates'])}")
+    # -------------------------
+    # Output
+    # -------------------------
+    print("\n[+] ADCS Results:")
+
+    if adcs["ca"]:
+        print(f"    CA: {adcs['ca']}")
+
+    if adcs["ca_vulns"]:
+        print(f"    CA Vulnerabilities:")
+        for v in adcs["ca_vulns"]:
+            print(f"      - {v}")
+
+    if adcs["templates"]:
+        print(f"    Template Vulnerabilities:")
+        for t in adcs["templates"]:
+            print(f"      - {t['name']} ({t['vuln']})")
+    else:
+        print("    No vulnerable templates found")
