@@ -1,5 +1,5 @@
 # ctfkit
-ctfkit is a modular CLI for pentesting that removes the need to constantly retype commands, credentials, and target details. It uses stored context (targets, creds, URLs) to automatically build and run commands for you, while still keeping you in control. Playbooks guide what to test, and modules handle the repetitive execution.
+ctfkit is a modular CLI for pentesting that removes the need to constantly retype commands, credentials, and target details. It uses stored context (targets, creds, URLs) to automatically build and run commands. Playbooks guide what to test, and modules handle the repetitive execution.
 
 Key features:
 
