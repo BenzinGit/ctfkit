@@ -29,7 +29,7 @@ Small, reusable actions:
 ```bash
 ctf smb.enum
 ctf nmap.scan
-ctf shell.generate
+ctf shell.generate php
 ```
 
 ### Playbooks 
