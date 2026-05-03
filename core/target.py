@@ -118,7 +118,7 @@ def target_use(args):
 def target_create(args):
     path = get_profile_path(args.name)
     url = getattr(args, "url", None)
-
+    
     if path.exists():
         # Using RED for Aborted, Blue for structure, Yellow for commands
         print(f"\n{R}[!] {W}{BOLD}DEPLOYMENT ABORTED{W}")
@@ -237,7 +237,7 @@ def target_list(args):
     current = load_current_name()
 
     # --- HEADER ---
-    print(f"\n{B}┌── {BOLD}TARGET DIRECTORY{W}{B} ──────────────────────────────────────┐{W}")
+    print(f"\n{B}┌── {BOLD}TARGET DIRECTORY{W}{B} ──────────────┐{W}")
     
     if not profiles:
         print(f"{B}│{W}  {Y}[!] No targets found. Run: {W}{BOLD}ctf create <name>{W}    {B}│{W}")
@@ -263,7 +263,7 @@ def target_list(args):
             # Using the Blue Pipe character to keep the box edges solid
             print(f"{B}│{W}  {marker} {status_label}  {display_name}  {B}│{W}")
 
-    print(f"{B}└──────────────────────────────────────────────────────────┘{W}")
+    print(f"{B}└──────────────────────────────────┘{W}")
     
     # --- SUMMARY FOOTER ---
     count = len(profiles)
@@ -698,12 +698,16 @@ def target_add_url(args):
 def get_current_url(data):
     urls = data.get("urls", [])
     idx = data.get("current_url")
+    ip = data.get("ip")
 
-    if not urls:
-        return None
-
-    # fallback safety
-    if idx is None or idx >= len(urls):
+    # 1. Use selected URL
+    if urls:
+        if idx is not None and idx < len(urls):
+            return urls[idx]
         return urls[0]
 
-    return urls[idx]
+    # 2. Fallback → assume HTTP on 80
+    if ip:
+        return f"http://{ip}"
+
+    return None

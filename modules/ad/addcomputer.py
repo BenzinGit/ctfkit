@@ -145,3 +145,34 @@ def run(data, cred, args):
 
 
     return data
+
+
+
+
+import os
+import pty
+import subprocess
+
+def run_live(cmd):
+    master, slave = pty.openpty()
+
+    process = subprocess.Popen(
+        cmd,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        text=True
+    )
+
+    os.close(slave)
+
+    while True:
+        try:
+            output = os.read(master, 1024).decode()
+            if not output:
+                break
+            print(output, end="")
+        except OSError:
+            break
+
+    process.wait()

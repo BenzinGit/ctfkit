@@ -11,8 +11,8 @@ ALIASES = {
             "add-cred": ["add-cred", "add-user","new-cred","new-user","create-cred","create-user","useradd"],
             "add-domain": ["add-domain", "ad", "new-domain", "create-domain"],
             "delete": ["delete", "remove"],
-            "set-url": ["set-url", "switch-url", "use-url"],
-            "add-url":["add-url", "new-url", ""]
+            "set-url": ["set-url", "switch-url", "use-url", "seturl", "switchurl", "newurl" "surl"],
+            "add-url":["add-url", "new-url", "addurl", "aurl"]
 
 
         }

