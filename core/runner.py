@@ -5,7 +5,8 @@ from core.target import load_current_profile, get_active_cred, save_profile
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODULES_DIR = BASE_DIR / "modules"
-
+G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+W_BOLD, DIM = '\033[1m', '\033[2m'
 
 # ---------------------- Module Loader ----------------------
 
@@ -23,6 +24,8 @@ def load_module(module_name):
 # ---------------------- Runner ----------------------
 
 def run_module(args):
+
+    
     try:
         data, path = load_current_profile()
     except Exception as e:
@@ -119,4 +122,5 @@ def normalize_args(args):
         args.out = extra[1]
 
     return args
+
 

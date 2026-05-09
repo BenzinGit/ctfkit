@@ -29,7 +29,7 @@ ALIASES = {
     "util": {
         "aliases": ["util"],
         "actions": {
-            "ping": ["ping", "pong"]
+            "ping": ["ping"]
         }
     },
 
@@ -51,8 +51,18 @@ ALIASES = {
      "ad": {
         "aliases": ["ad", "active-directory"],
         "actions": {
-            "collect": ["bloodhound", "bh"]
+            "collect": ["collect", "bloodhound", "bh"]
         }
      
-    }    
+    },
+
+    "privesc": {
+        "aliases": ["privesc", "pe"],
+        "actions": {
+            "sudo": ["sudo"]
+        }
+     
+    }
+
+        
 }

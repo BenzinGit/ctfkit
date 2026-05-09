@@ -47,7 +47,6 @@ def normalize_playbook(pb, fallback_name):
 def render_enum_step(step, is_expanded, data):
     entries = step.get("entries", [])
         
-    print(f"\n{DIM}Commands:{W}")
     for i, e in enumerate(entries):
         mode = step.get("mode", "enum")
         cmd = inject_vars(e.get("cmd", ""), data)
@@ -56,7 +55,7 @@ def render_enum_step(step, is_expanded, data):
         print(f"{BOLD}{cmd}{W}")
 
         if is_expanded:
-            if e.get("info"): print(f" {B}├──{W} {C}INFO:{W} {e['info']}")
+            if e.get("info"): print(f" {B}├──{W} {C}{W} {e['info']}")
             
             # The "Look For" branch
             if e.get("look_for"):
@@ -96,8 +95,16 @@ def render_standard_step(step, is_expanded, data):
 # =========================================================
 
 def run_playbook(args):
+
+    if args.name == "list":
+        list_playbooks()
+        return
+
+
     raw = load_playbook(args.name)
     if not raw: return
+
+    
 
     pb = normalize_playbook(raw, args.name)
     data, _ = load_current_profile()
@@ -120,6 +127,18 @@ def run_playbook(args):
 
         if step.get("info") and is_expanded:
             print(f"{DIM}{step['info']}{W}")
+
+            # STEP LOOK_FOR
+            if step.get("look_for"):
+                print(f"\n {B}├──{W} {G}LOOK FOR:{W}")
+                for l in step["look_for"]:
+                    print(f" {B}│{W}   {B}•{W} {l}")
+
+            # STEP NOTES
+            if step.get("notes"):
+                print(f"\n {B}├──{W} {Y}NOTES:{W}")
+                for n in step["notes"]:
+                    print(f" {B}│{W}   {B}•{W} {n}")
 
         # --- CONTENT ---
         if mode in ["enum", "chain"]:
@@ -150,3 +169,52 @@ def run_playbook(args):
             break
 
     return data
+
+
+def build_tree(paths):
+    tree = {}
+    for path in paths:
+        # Get relative parts and strip .yaml extension
+        parts = path.relative_to(PLAYBOOK_DIR).with_suffix("").parts
+        current = tree
+        for p in parts:
+            current = current.setdefault(p, {})
+    return tree
+
+def print_tree(tree, prefix=""):
+    items = sorted(tree.items())
+    for i, (key, subtree) in enumerate(items):
+        # Determine if we are at the end of the current branch
+        is_last = (i == len(items) - 1)
+        connector = "└── " if is_last else "├── "
+        
+        # Folder vs Leaf coloring
+        # Directories get Cyan, final playbooks get Bold White
+        label = f"{C}{key}{W}" if subtree else f"{W}{BOLD}{key}{W}"
+        
+        print(f"  {B}{prefix}{connector}{W}{label}")
+
+        if subtree:
+            # If not the last item, keep the vertical pipe going
+            extension = "    " if is_last else "│   "
+            print_tree(subtree, prefix + extension)
+
+def list_playbooks():
+    # 1. PHASE HEADER
+    print(f"\n{W}{BOLD}[*] PLAYBOOK ENUMERATION{W}")
+    
+    # FIX: Changed .rglob+("*.yaml") to .rglob("*.yaml")
+    paths = list(PLAYBOOK_DIR.rglob("*.yaml"))
+    
+    if not paths:
+        print(f"  {R}└── Failure: No playbooks found in {PLAYBOOK_DIR}{W}")
+        return
+
+    # 2. METADATA TREE
+    print(f"  {B}├──{W} Source: {C}{PLAYBOOK_DIR}{W}")
+
+    tree = build_tree(paths)
+    
+    # 3. RESOURCE TREE
+    print_tree(tree)
+    print()

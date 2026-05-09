@@ -10,44 +10,104 @@ from core import doctor
 from core.chain import run_chain_script
 from core.chain import run_chain_script, CHAINS_DIR
 from core.playbook import run_playbook
+from core.tree import list_resources
+
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+MODULE_DIR = BASE_DIR / "modules"
+
 
 # ---------------------- ALIAS RESOLVER ----------------------
 
 def resolve_alias():
+
     if len(sys.argv) < 2:
         return None
 
-    cmd1 = sys.argv[1]
-    cmd2 = sys.argv[2] if len(sys.argv) > 2 else None
+    cmd = sys.argv[1]
 
-    # -------------------------
-    # 1. dot syntax (ad.enum)
-    # -------------------------
-    if "." in cmd1:
-        module, action = cmd1.split(".", 1)
-    else:
-        module = cmd1
-        action = cmd2
+    # =========================================
+    # 1. SINGLE WORD COMMANDS
+    # =========================================
+    #
+    # Examples:
+    # ctf new
+    # ctf use
+    # ctf creds
+    #
+    # =========================================
 
-    # -------------------------
-    # 2. normal alias resolution
-    # -------------------------
-    for mod_name, mod_data in ALIASES.items():
-        if module in mod_data["aliases"]:
-            if not action:
-                return None
+    if "." not in cmd:
 
+        for mod_name, mod_data in ALIASES.items():
+
+            # Direct module alias
+            if cmd in mod_data["aliases"]:
+                return mod_name, None
+
+            # Action aliases
             for action_name, action_aliases in mod_data["actions"].items():
-                if action in action_aliases:
+
+                if cmd in action_aliases:
                     return mod_name, action_name
 
-       # 🔥 FLAT COMMAND SUPPORT
-    for mod_name, mod_data in ALIASES.items():
-        for action_name, action_aliases in mod_data["actions"].items():
-            if cmd1 in action_aliases:
-                return mod_name, action_name
+        return None
+
+    # =========================================
+    # 2. DOT SYNTAX
+    # =========================================
+
+    parts = cmd.split(".")
+
+    action = parts[-1]
+    namespace_parts = parts[:-1]
+
+    # ---------------------------------
+    # Nested namespace fallback
+    # ---------------------------------
+
+    while namespace_parts:
+
+        current_namespace = ".".join(namespace_parts)
+
+        for mod_name, mod_data in ALIASES.items():
+
+            if current_namespace in mod_data["aliases"]:
+
+                for action_name, action_aliases in mod_data["actions"].items():
+
+                    if action in action_aliases:
+
+                        remaining = parts[len(namespace_parts):-1]
+
+                        if remaining:
+                            full_module = mod_name + "." + ".".join(remaining)
+                        else:
+                            full_module = mod_name
+
+                        return full_module, action_name
+
+        namespace_parts.pop()
 
     return None
+
+
+def handle_mod(args):
+
+    if args.name == "list" or "ls":
+
+        list_resources(
+            MODULE_DIR,
+            ".py",
+            "Module Enumeration",
+            ignore=["__pycache__"]
+        )
+
+        return
+
+    print("[!] Module execution not implemented yet.")
+
 
 
 # ---------------------- MAIN ----------------------
@@ -210,9 +270,14 @@ def main():
     chain_parser.add_argument("--quiet", action="store_true")
     
     chain_parser.set_defaults(func=lambda args: run_chain_script(args))
-    
+
+
+    mod_parser = subparsers.add_parser("mod")
+    mod_parser.add_argument("name")
+    mod_parser.set_defaults(func=handle_mod)    
     
     play_parser = subparsers.add_parser("play")
+    
     play_parser.add_argument("name")
     play_parser.set_defaults(func=run_playbook)
 

