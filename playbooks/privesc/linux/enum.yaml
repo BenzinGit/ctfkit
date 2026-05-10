@@ -131,7 +131,24 @@ steps:
       look_for:
         - custom services
         - scripts
-        - creds in args    
+        - creds in args
+    
+    - cmd: "ps auxf"
+      info: process tree
+
+    - cmd: "systemctl list-units --type=service --state=running"
+      info: running services
+
+    - cmd: "ss -lntp"
+      info: listening services
+
+    - cmd: "netstat -tulpn"
+      info: network services
+
+    - cmd: "systemctl list-timers --all"
+      info: systemd timers      
+        
+        
 
 # =========================================================
 # [6] Scheduled Tasks

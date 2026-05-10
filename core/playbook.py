@@ -19,6 +19,36 @@ def inject_vars(text, data):
         text = text.replace(f"{{{m}}}", str(val))
     return text
 
+
+def render_script_step(step, is_expanded, data):
+
+    script = inject_vars(step.get("script", ""), data)
+
+    print()
+    print(f"{BOLD}{script}{W}")
+
+    if is_expanded:
+
+        if step.get("info"):
+            print(f"\n {B}├──{W} {C}INFO:{W} {step['info']}")
+
+        if step.get("look_for"):
+            print(f"\n {B}├──{W} {G}LOOK FOR:{W}")
+            for l in step["look_for"]:
+                print(f" {B}│{W}   {B}•{W} {l}")
+
+        if step.get("notes"):
+            print(f"\n {B}├──{W} {Y}NOTES:{W}")
+            for n in step["notes"]:
+                print(f" {B}│{W}   {B}•{W} {n}")
+
+        if step.get("example_output"):
+            print(f"\n {B}└──{W} {DIM}EXAMPLE:{W}")
+            for line in step["example_output"].splitlines():
+                print(f"     {DIM}{line}{W}")
+
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 PLAYBOOK_DIR = BASE_DIR / "playbooks"
 
@@ -143,12 +173,17 @@ def run_playbook(args):
         # --- CONTENT ---
         if mode in ["enum", "chain"]:
             render_enum_step(step, is_expanded, data)
+
+        elif mode == "script":
+            render_script_step(step, is_expanded, data)
+
         else:
             render_standard_step(step, is_expanded, data)
 
         # --- TACTICAL FOOTER ---
         print(f"\n{DIM}{'─'*60}{W}")
-        print(f"{BOLD}{B}[N]{W}ext  {BOLD}{B}[B]{W}ack  {BOLD}{B}[T]{W}oggle View  {BOLD}{B}[L]{W}ist  {BOLD}{R}[Q]{W}uit")
+        print(f"{BOLD}{B}[N]{W}ext  {BOLD}{B}[B]{W}ack  {BOLD}{B}[T]{W}oggle View  {BOLD}{B}[L]{W}ist  {BOLD}{B}[S]{W}ave  {BOLD}{R}[Q]{W}uit")
+
         
         choice = input(f"\n{B}Select: ").strip().lower()
 
@@ -167,6 +202,28 @@ def run_playbook(args):
             input(f"\n{DIM}Press Enter to return...{W}")
         elif choice == "q":
             break
+
+        elif choice == "s":
+
+            if mode != "script":
+                print(f"\n{R}[!] Current step is not a script.{W}")
+                input("\nPress Enter...")
+                continue
+
+            filename = input(f"\n{B}Save as:{W} ").strip()
+
+            if not filename:
+                continue
+
+            script = inject_vars(step.get("script", ""), data)
+
+            with open(filename, "w") as f:
+                f.write(script)
+
+            os.chmod(filename, 0o755)
+
+            print(f"\n{G}[+] Saved script to:{W} {filename}")
+            input("\nPress Enter...")
 
     return data
 

