@@ -1,0 +1,185 @@
+name: Linux PrivEsc - Fast Wins
+
+steps:
+
+# =========================================================
+# [1] IDENTITY
+# =========================================================
+- title: Identity
+  mode: enum
+
+  entries:
+
+    - cmd: "id"
+      info: current user and groups
+
+      look_for:
+        - sudo
+        - docker
+        - lxd
+        - adm
+        - disk
+        - shadow
+        - root
+
+    - cmd: "whoami"
+      info: current user
+
+    - cmd: "hostname"
+      info: hostname
+
+    - cmd: "uname -a"
+      info: kernel version
+
+      look_for:
+        - old kernels
+        - ubuntu
+        - debian
+
+# =========================================================
+# [2] SUDO
+# =========================================================
+- title: Sudo
+  mode: enum
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: sudo privileges
+
+      look_for:
+        - NOPASSWD
+        - ALL
+        - vim
+        - less
+        - busctl
+        - systemctl
+        - python
+        - awk
+        - find
+
+# =========================================================
+# [3] SUID
+# =========================================================
+- title: SUID
+  mode: enum
+
+  entries:
+
+    - cmd: "find / -perm -4000 2>/dev/null"
+      info: SUID binaries
+
+      look_for:
+        - custom binaries
+        - gtfobins
+        - unexpected paths
+
+# =========================================================
+# [4] CAPABILITIES
+# =========================================================
+- title: Capabilities
+  mode: enum
+
+  entries:
+
+    - cmd: "getcap -r / 2>/dev/null"
+      info: file capabilities
+
+      look_for:
+        - cap_setuid
+        - cap_sys_admin
+        - python
+        - perl
+
+# =========================================================
+# [5] WRITABLE FILES
+# =========================================================
+- title: Writable Files
+  mode: enum
+
+  entries:
+
+    - cmd: "find / -writable -type d 2>/dev/null | head"
+      info: writable dirs
+
+    - cmd: "find / -perm -o+w -type f 2>/dev/null | head"
+      info: world writable files
+
+# =========================================================
+# [6] CRON
+# =========================================================
+- title: Cron
+  mode: enum
+
+  entries:
+
+    - cmd: "crontab -l"
+      info: user cronjobs
+
+    - cmd: "ls -la /etc/cron*"
+      info: system cronjobs
+
+# =========================================================
+# [7] SERVICES
+# =========================================================
+- title: Services
+  mode: enum
+
+  entries:
+
+    - cmd: "ps aux"
+      info: running processes
+
+      look_for:
+        - root processes
+        - tmux
+        - screen
+        - custom apps
+
+# =========================================================
+# [8] CONTAINERS
+# =========================================================
+- title: Containers
+  mode: enum
+
+  entries:
+
+    - cmd: "groups"
+      info: group memberships
+
+    - cmd: "docker ps"
+      info: docker access
+
+    - cmd: "lxc list"
+      info: lxd access
+
+# =========================================================
+# [9] NETWORK
+# =========================================================
+- title: Network
+  mode: enum
+
+  entries:
+
+    - cmd: "ss -tunlp"
+      info: listening services
+
+    - cmd: "ip a"
+      info: interfaces
+
+# =========================================================
+# [10] QUICK LOOT
+# =========================================================
+- title: Quick Loot
+  mode: enum
+
+  entries:
+
+    - cmd: "find / -name id_rsa 2>/dev/null"
+      info: ssh keys
+
+    - cmd: "find / -name '*.kdbx' 2>/dev/null"
+      info: keepass dbs
+
+    - cmd: "find / -type f -name '.*' 2>/dev/null | xargs ls -l"
+      info: hidden files

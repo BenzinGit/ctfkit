@@ -1,0 +1,210 @@
+name: Linux PrivEsc - Fast Wins
+
+steps:
+
+- title: System Information
+  mode: enum
+  entries:
+
+    - cmd: "hostname"
+      info: hostname
+
+    - cmd: "systeminfo"
+      info: detailed system information
+      look_for:
+        - os version
+        - patch level
+        - hotfixes
+        - virtualization
+        - dual homed interfaces
+
+    - cmd: "wmic qfe"
+      info: installed hotfixes
+      look_for:
+        - missing patches
+        - old KBs
+
+    - cmd: "Get-HotFix | ft -AutoSize"
+      info: powershell hotfix enumeration
+      shell: powershell
+
+    - cmd: "echo %PROCESSOR_ARCHITECTURE%"
+      info: architecture
+
+    - cmd: "set"
+      info: environment variables
+      look_for:
+        - custom PATH
+        - writable dirs
+        - startup paths
+        - roaming profiles
+
+- title: Network Enumeration
+  mode: enum
+  entries:
+
+    - cmd: "ipconfig /all"
+      info: interfaces and DNS information
+      look_for:
+        - dual homed systems
+        - internal networks
+        - domain info
+        - dns servers
+
+    - cmd: "arp -a"
+      info: arp cache
+      look_for:
+        - nearby hosts
+        - admin systems
+        - lateral movement targets
+
+    - cmd: "route print"
+      info: routing table
+      look_for:
+        - additional networks
+        - pivots
+        - hidden segments
+
+    - cmd: "netstat -ano"
+      info: active network connections
+      look_for:
+        - localhost services
+        - listening ports
+        - unusual connections
+        - internal only services
+
+- title: Processes & Services
+  mode: enum
+  entries:
+
+    - cmd: "tasklist /svc"
+      info: running processes and services
+      look_for:
+        - non standard services
+        - AV/EDR
+        - SYSTEM services
+        - vulnerable software
+
+    - cmd: "sc query"
+      info: service enumeration
+
+    - cmd: "wmic service list brief"
+      info: service overview
+
+- title: Users & Groups
+  mode: enum
+  entries:
+
+    - cmd: "whoami"
+      info: current user
+
+    - cmd: "echo %USERNAME%"
+      info: current username
+
+    - cmd: "whoami /priv"
+      info: token privileges
+      look_for:
+        - SeImpersonatePrivilege
+        - SeAssignPrimaryTokenPrivilege
+        - SeBackupPrivilege
+        - SeRestorePrivilege
+
+    - cmd: "whoami /groups"
+      info: current group memberships
+      look_for:
+        - admin groups
+        - remote management
+        - special rights
+
+    - cmd: "query user"
+      info: logged in users
+      look_for:
+        - active admins
+        - RDP sessions
+
+    - cmd: "net user"
+      info: local users
+
+    - cmd: "net localgroup"
+      info: local groups
+
+    - cmd: "net localgroup administrators"
+      info: local administrators
+
+    - cmd: "net accounts"
+      info: password policy
+      look_for:
+        - weak policies
+        - no lockout
+        - low complexity
+
+- title: Installed Software
+  mode: enum
+  entries:
+
+    - cmd: "wmic product get name"
+      info: installed software
+      look_for:
+        - outdated software
+        - vulnerable software
+        - admin tools
+
+    - cmd: "Get-WmiObject -Class Win32_Product | select Name, Version"
+      info: powershell software enumeration
+      shell: powershell
+
+- title: AV & AppLocker
+  mode: enum
+  entries:
+
+    - cmd: "Get-MpComputerStatus"
+      info: windows defender status
+      shell: powershell
+      look_for:
+        - realtime protection
+        - AV status
+        - defender disabled
+
+    - cmd: "Get-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections"
+      info: effective applocker policy
+      shell: powershell
+      look_for:
+        - blocked binaries
+        - allowed paths
+        - whitelist bypasses
+
+    - cmd: "Get-AppLockerPolicy -Local | Test-AppLockerPolicy -path C:\\Windows\\System32\\cmd.exe -User Everyone"
+      info: test applocker for cmd.exe
+      shell: powershell
+
+- title: Named Pipes & IPC
+  mode: enum
+  entries:
+
+    - cmd: "pipelist.exe /accepteula"
+      info: named pipes via sysinternals
+      look_for:
+        - unusual pipes
+        - exposed services
+        - custom software
+
+    - cmd: "gci \\\\.\\pipe\\"
+      info: powershell named pipe enumeration
+      shell: powershell
+
+    - cmd: "accesschk.exe /accepteula \\\\.\\Pipe\\lsass -v"
+      info: lsass pipe permissions
+      look_for:
+        - weak ACLs
+        - writable pipes
+
+    - cmd: "accesschk.exe -accepteula -w \\pipe\\* -v"
+      info: writable named pipes
+      look_for:
+        - FILE_ALL_ACCESS
+        - Everyone write access
+
+    - cmd: "accesschk.exe -accepteula -w \\pipe\\WindscribeService -v"
+      info: example vulnerable pipe permissions
+      look_for:
+        - Everyone FILE_ALL_ACCESS

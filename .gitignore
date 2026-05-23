@@ -224,3 +224,8 @@ tools/*
 artifacts/*
 !artifacts/.gitkeep
 
+
+# Exploits (download externally)
+exploits/*
+!exploits/.gitkeep
+

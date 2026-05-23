@@ -1,0 +1,327 @@
+name: Insecure Direct Object References (IDOR)
+
+steps:
+  - title: Identify User-Controlled Object References
+    mode: chain
+    info: |
+      Identify parameters and paths referencing objects or users.
+
+    entries:
+      - cmd: "id=<USER>"
+        info: user identifier
+
+      - cmd: "user=<USER>"
+        info: username parameter
+
+      - cmd: "account=<ID>"
+        info: account reference
+
+      - cmd: "profile=<ID>"
+        info: profile identifier
+
+      - cmd: "/users/<ID>"
+        info: REST endpoint
+
+      - cmd: "/api/users/<ID>"
+        info: API object reference
+
+      - cmd: "filename=<FILE>"
+        info: file reference
+
+      - cmd: "document=<ID>"
+        info: document access
+
+    look_for:
+      - numeric IDs
+      - usernames
+      - GUIDs
+      - filenames
+      - UUIDs
+      - object references
+
+  - title: Sequential ID Testing
+    mode: chain
+    info: |
+      Test whether object identifiers are enumerable.
+
+    entries:
+      - cmd: "id=1"
+        info: first object
+
+      - cmd: "id=2"
+        info: increment object
+
+      - cmd: "id=3"
+        info: continue enumeration
+
+      - cmd: "filename=1.txt"
+        info: static file enumeration
+
+      - cmd: "filename=2.txt"
+        info: incremental files
+
+    look_for:
+      - accessible resources
+      - different user data
+      - sequential identifiers
+      - leaked information
+
+    notes:
+      - compare response sizes
+      - inspect redirect bodies
+      - automate with Intruder if needed
+
+  - title: Username-Based IDOR
+    mode: chain
+    info: |
+      Replace your username with another valid user.
+
+    entries:
+      - cmd: "id=carlos"
+        info: access another profile
+
+      - cmd: "user=administrator"
+        info: admin profile access
+
+      - cmd: "/my-account?id=<USER>"
+        info: account switching
+
+      - cmd: "/profile/<USER>"
+        info: profile traversal
+
+    look_for:
+      - API keys
+      - email addresses
+      - password fields
+      - personal data
+      - admin-only information
+
+  - title: GUID and UUID Enumeration
+    mode: chain
+    info: |
+      Discover unpredictable object identifiers.
+
+    entries:
+      - cmd: "Inspect public profiles"
+        info: leaked GUIDs
+
+      - cmd: "Review blog author links"
+        info: user references
+
+      - cmd: "Inspect API responses"
+        info: embedded IDs
+
+      - cmd: "Search JavaScript responses"
+        info: hidden identifiers
+
+      - cmd: "Review HTML source"
+        info: leaked object references
+
+    look_for:
+      - UUIDs
+      - GUIDs
+      - user mappings
+      - API object IDs
+      - hidden identifiers
+
+    notes:
+      - public content often leaks private IDs
+      - comments and profile links are useful
+
+  - title: File Reference IDOR
+    mode: chain
+    info: |
+      Access files through predictable or exposed references.
+
+    entries:
+      - cmd: "filename=1.txt"
+        info: transcript enumeration
+
+      - cmd: "filename=report.pdf"
+        info: document access
+
+      - cmd: "/download/<FILE>"
+        info: direct file retrieval
+
+      - cmd: "/static/logs/<FILE>"
+        info: exposed logs
+
+      - cmd: "/exports/<FILE>"
+        info: exported data
+
+    look_for:
+      - chat logs
+      - credentials
+      - API keys
+      - exported reports
+      - sensitive documents
+
+  - title: Redirect Data Leakage
+    mode: chain
+    info: |
+      Inspect redirect responses for leaked sensitive data.
+
+    entries:
+      - cmd: "Change object reference before redirect"
+        info: access unauthorized object
+
+      - cmd: "Inspect response body"
+        info: leaked content
+
+      - cmd: "Disable automatic redirects"
+        info: capture raw response
+
+    look_for:
+      - API keys
+      - profile data
+      - hidden JSON
+      - leaked HTML
+      - sensitive fields
+
+    notes:
+      - Burp Repeater
+      - disable redirect following
+      - compare authorized vs unauthorized responses
+
+  - title: Hidden Field Disclosure
+    mode: chain
+    info: |
+      Check whether sensitive values are embedded in forms.
+
+    entries:
+      - cmd: "View masked password fields"
+        info: prefilled credentials
+
+      - cmd: "Inspect hidden form fields"
+        info: sensitive parameters
+
+      - cmd: "Review JSON responses"
+        info: hidden attributes
+
+      - cmd: "Check disabled input fields"
+        info: leaked data
+
+    look_for:
+      - passwords
+      - API keys
+      - tokens
+      - email addresses
+      - internal identifiers
+
+  - title: API IDOR Testing
+    mode: chain
+    info: |
+      Test object-level authorization in APIs.
+
+    entries:
+      - cmd: "GET /api/users/<ID>"
+        info: retrieve user object
+
+      - cmd: "PUT /api/users/<ID>"
+        info: modify user
+
+      - cmd: "DELETE /api/users/<ID>"
+        info: delete object
+
+      - cmd: "PATCH /api/users/<ID>"
+        info: partial update
+
+      - cmd: "GET /api/orders/<ID>"
+        info: order access
+
+    look_for:
+      - unauthorized access
+      - object modification
+      - privilege escalation
+      - missing authorization
+
+    notes:
+      - compare requests between users
+      - test all HTTP methods
+      - common in REST APIs
+
+  - title: Multi-Tenant IDOR
+    mode: enum
+    info: |
+      Test tenant and organization isolation.
+
+    entries:
+      - cmd: "tenant=<ID>"
+        info: tenant switching
+
+      - cmd: "organization=<ID>"
+        info: organization access
+
+      - cmd: "company=<ID>"
+        info: company isolation
+
+      - cmd: "workspace=<ID>"
+        info: workspace access
+
+    look_for:
+      - cross-tenant data
+      - organization leakage
+      - unauthorized records
+      - shared resources
+
+  - title: IDOR Mutation Checklist
+    mode: enum
+    info: |
+      Common mutations for object references.
+
+    entries:
+      - cmd: "Increment IDs"
+        info: sequential enumeration
+
+      - cmd: "Decrement IDs"
+        info: previous object access
+
+      - cmd: "Swap usernames"
+        info: horizontal access
+
+      - cmd: "Replace GUIDs"
+        info: UUID testing
+
+      - cmd: "Remove parameters"
+        info: default object access
+
+      - cmd: "Duplicate parameters"
+        info: parameter pollution
+
+      - cmd: "Switch HTTP methods"
+        info: inconsistent authorization
+
+      - cmd: "Replay admin requests"
+        info: privilege reuse
+
+    look_for:
+      - inconsistent access control
+      - leaked resources
+      - unauthorized actions
+      - hidden functionality
+
+  - title: Useful Burp Workflow
+    mode: enum
+    info: |
+      Typical IDOR testing workflow.
+
+    entries:
+      - cmd: "Proxy"
+        info: capture baseline requests
+
+      - cmd: "Repeater"
+        info: manual object mutation
+
+      - cmd: "Comparer"
+        info: response diffing
+
+      - cmd: "Intruder"
+        info: bulk ID enumeration
+
+      - cmd: "Logger"
+        info: track object references
+
+    notes:
+      - compare authorized vs unauthorized requests
+      - inspect hidden response differences
+      - automate numeric enumeration carefully

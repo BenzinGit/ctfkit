@@ -1,0 +1,300 @@
+name: Multi-Step Access Control Flaws
+
+steps:
+  - title: Identify Multi-Step Workflows
+    mode: chain
+    info: |
+      Identify functionality split across multiple requests or stages.
+
+    entries:
+      - cmd: "Role upgrade workflows"
+        info: admin promotion
+
+      - cmd: "Password reset flows"
+        info: token verification
+
+      - cmd: "Account deletion confirmation"
+        info: destructive actions
+
+      - cmd: "Checkout/payment processes"
+        info: transactional workflow
+
+      - cmd: "Email verification"
+        info: account validation
+
+      - cmd: "MFA setup flows"
+        info: authentication workflow
+
+    look_for:
+      - confirmation steps
+      - review pages
+      - hidden state parameters
+      - tokens
+      - multi-request sequences
+
+  - title: Capture Full Workflow
+    mode: chain
+    info: |
+      Record every request involved in the workflow.
+
+    entries:
+      - cmd: "Capture initial request"
+        info: starting state
+
+      - cmd: "Capture intermediate requests"
+        info: workflow transitions
+
+      - cmd: "Capture final confirmation request"
+        info: privileged action
+
+      - cmd: "Map request order"
+        info: state tracking
+
+    look_for:
+      - hidden parameters
+      - workflow tokens
+      - role checks
+      - state identifiers
+      - confirmation endpoints
+
+    notes:
+      - use Burp Proxy + HTTP history
+      - compare all workflow stages
+      - inspect hidden fields carefully
+
+  - title: Replay Final Step Directly
+    mode: chain
+    info: |
+      Attempt to execute the final privileged request directly.
+
+    entries:
+      - cmd: "Send final request to Repeater"
+        info: isolate privileged action
+
+      - cmd: "Replay without previous steps"
+        info: missing workflow validation
+
+      - cmd: "Skip confirmation stage"
+        info: direct execution attempt
+
+      - cmd: "Replay with low-privileged session"
+        info: authorization validation
+
+    look_for:
+      - successful action execution
+      - missing state validation
+      - incomplete authorization
+      - reusable requests
+
+    notes:
+      - common in admin workflows
+      - backend may trust frontend sequence
+
+  - title: Session Swapping
+    mode: chain
+    info: |
+      Perform privileged workflow as admin, execute final step as low user.
+
+    entries:
+      - cmd: "Capture admin workflow request"
+        info: privileged baseline
+
+      - cmd: "Replace admin session cookie"
+        info: low-privileged session
+
+      - cmd: "Replay privileged request"
+        info: authorization bypass
+
+      - cmd: "Change target username"
+        info: self-escalation
+
+    look_for:
+      - successful role changes
+      - privilege escalation
+      - missing authorization checks
+      - workflow trust flaws
+
+  - title: Step Skipping
+    mode: enum
+    info: |
+      Attempt to bypass individual workflow stages.
+
+    entries:
+      - cmd: "Skip review page"
+        info: bypass confirmation
+
+      - cmd: "Skip MFA verification"
+        info: incomplete auth flow
+
+      - cmd: "Skip token validation"
+        info: weak state enforcement
+
+      - cmd: "Skip approval step"
+        info: missing authorization
+
+      - cmd: "Skip payment validation"
+        info: workflow logic flaw
+
+    look_for:
+      - accepted requests
+      - missing validation
+      - inconsistent workflow enforcement
+      - unauthorized actions
+
+  - title: State Parameter Manipulation
+    mode: chain
+    info: |
+      Modify workflow state values and hidden parameters.
+
+    entries:
+      - cmd: "\"confirmed\": true"
+        info: force confirmation
+
+      - cmd: "\"approved\": true"
+        info: bypass approval
+
+      - cmd: "\"role\": \"admin\""
+        info: privilege escalation
+
+      - cmd: "\"step\": 3"
+        info: jump workflow stage
+
+      - cmd: "\"completed\": true"
+        info: fake completion state
+
+    look_for:
+      - trusted client-side state
+      - skipped validation
+      - successful escalation
+      - accepted forged values
+
+  - title: Token Reuse Testing
+    mode: enum
+    info: |
+      Test whether workflow tokens can be replayed or reused.
+
+    entries:
+      - cmd: "Replay old confirmation token"
+        info: token reuse
+
+      - cmd: "Reuse approval request"
+        info: duplicate execution
+
+      - cmd: "Swap token between users"
+        info: token authorization flaw
+
+      - cmd: "Use expired token"
+        info: weak expiration validation
+
+    look_for:
+      - reusable tokens
+      - missing expiration
+      - cross-user token acceptance
+      - repeated execution
+
+  - title: Race Condition Opportunities
+    mode: enum
+    info: |
+      Identify timing-sensitive workflow flaws.
+
+    entries:
+      - cmd: "Send simultaneous approval requests"
+        info: race condition
+
+      - cmd: "Replay confirmation rapidly"
+        info: duplicate execution
+
+      - cmd: "Modify workflow during transition"
+        info: state desync
+
+      - cmd: "Use Turbo Intruder"
+        info: concurrent requests
+
+    look_for:
+      - duplicate actions
+      - inconsistent state
+      - double execution
+      - desynchronized workflow
+
+  - title: Common Vulnerable Workflows
+    mode: enum
+    info: |
+      High-value multi-step functionality.
+
+    entries:
+      - cmd: "User role changes"
+        info: privilege escalation
+
+      - cmd: "Password resets"
+        info: account takeover
+
+      - cmd: "Email changes"
+        info: identity takeover
+
+      - cmd: "Account deletion"
+        info: destructive actions
+
+      - cmd: "Payment processing"
+        info: financial abuse
+
+      - cmd: "MFA enrollment"
+        info: authentication bypass
+
+      - cmd: "Admin approvals"
+        info: authorization flaws
+
+    look_for:
+      - missing validation
+      - replayable actions
+      - skipped authorization
+      - weak state enforcement
+
+  - title: Response Comparison
+    mode: chain
+    info: |
+      Compare valid and manipulated workflow responses.
+
+    entries:
+      - cmd: "Compare authorized vs replayed request"
+        info: workflow validation
+
+      - cmd: "Inspect hidden JSON fields"
+        info: state leakage
+
+      - cmd: "Check redirect differences"
+        info: partial validation
+
+      - cmd: "Inspect response timing"
+        info: backend processing
+
+    look_for:
+      - inconsistent validation
+      - leaked workflow state
+      - verbose errors
+      - hidden authorization logic
+
+  - title: Useful Burp Workflow
+    mode: enum
+    info: |
+      Common workflow testing setup.
+
+    entries:
+      - cmd: "Proxy"
+        info: capture workflow
+
+      - cmd: "Repeater"
+        info: replay isolated steps
+
+      - cmd: "Comparer"
+        info: compare responses
+
+      - cmd: "Intruder"
+        info: automate mutations
+
+      - cmd: "Turbo Intruder"
+        info: race condition testing
+
+    notes:
+      - isolate every workflow stage
+      - replay final actions independently
+      - compare authorized vs unauthorized flows

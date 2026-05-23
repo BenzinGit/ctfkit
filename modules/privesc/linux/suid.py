@@ -1,7 +1,7 @@
 import sys
 
 # ==============================
-# RULE DEFINITIONS (THE BRAINS)
+# RULE DEFINITIONS
 # ==============================
 
 RULES = {

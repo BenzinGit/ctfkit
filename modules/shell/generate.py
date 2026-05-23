@@ -1,92 +1,134 @@
+from pathlib import Path
+import subprocess
+
+from core.attacker import resolve_lhost
+
+# --- CLEAN UI PALETTE ---
+G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+W_BOLD, DIM = '\033[1m', '\033[2m'
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+SHELL_DIR = BASE_DIR / "shells"
+
+# =========================================================
+# HELPERS
+# =========================================================
+
+def detect_mode(path):
+    ext = path.suffix.lower()
+    if ext in [".php", ".ps1", ".exe", ".dll", ".bat"]:
+        return "file"
+    return "inline"
+
+def discover_shells():
+    shells = {}
+    if not SHELL_DIR.exists():
+        return shells
+
+    for path in SHELL_DIR.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(SHELL_DIR)
+        shell_name = str(rel.with_suffix(""))
+        shells[shell_name] = {
+            "path": path,
+            "mode": detect_mode(path),
+        }
+    return shells
+
+def copy_to_clipboard(text):
+    for utility in [["xclip", "-selection", "clipboard"], ["xsel", "-bi"]]:
+        try:
+            p = subprocess.Popen(utility, stdin=subprocess.PIPE, close_fds=True)
+            p.communicate(input=text.encode("utf-8"))
+            return True
+        except FileNotFoundError:
+            continue
+    try:
+        p = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE, close_fds=True)
+        p.communicate(input=text.encode("utf-8"))
+        return True
+    except Exception:
+        return False
+
+# =========================================================
+# MAIN
+# =========================================================
+
 def run(data, cred, args):
-    from pathlib import Path
-    import subprocess
-    from core.shell_templates import SHELLS
-    from core.paths import get_artifacts_dir
-    from core.attacker import resolve_lhost
+    shells = discover_shells()
 
-    # --- CORE PALETTE ---
-    G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
-    BOLD, DIM = '\033[1m', '\033[2m'
+    # Determine shell type
+    stype = (
+        args.extra[0]
+        if (hasattr(args, "extra") and args.extra)
+        else "bash/reverse"
+    )
 
-    # ---------------- SETTINGS ----------------
-    target = data.get("name", "unknown")
-    stype = args.extra[0] if (hasattr(args, "extra") and args.extra) else "bash"
-    
-    if stype not in SHELLS:
-        print(f"\n{R}[!] {W}{BOLD}UNKNOWN SHELL TYPE: {stype}{W}")
+    if stype not in shells:
+        print(f"\n{R}[!] Error: Unknown shell template type '{stype}'{W}")
+        print(f"\n{W_BOLD}[*] Available Templates:{W}")
+        for name in sorted(shells):
+            print(f"  {B}├──{W} {name}")
+        print()
         return
 
-    shell_info = SHELLS[stype]
+    shell_info = shells[stype]
+
+    # Target & Host Parameters
     lhost = resolve_lhost(args)
-    
     if not lhost:
-        print(f"\n{R}[!] {W}{BOLD}LHOST RESOLUTION FAILED{W}\n{B}  └── {W}Check tun0 or use --lhost")
+        print(f"\n{R}[!] Error: LHOST resolution failed.{W}\n")
         return
 
-    # --- THE FIX ---
-    # args.lport might exist as None, so we check the value specifically
     lport_raw = getattr(args, "lport", None)
     lport = int(lport_raw) if lport_raw is not None else 4444
 
-    # ---------------- GENERATION ----------------
-    BASE_DIR = Path(__file__).resolve().parent.parent.parent
-    SHELL_DIR = BASE_DIR / "shells"
-    shell_path = SHELL_DIR / shell_info["file"]
-
+    shell_path = shell_info["path"]
     if not shell_path.exists():
-        print(f"\n{R}[!] {W}{BOLD}FILE NOT FOUND{W}\n{B}  └── {W}{shell_path}")
+        print(f"\n{R}[!] Error: Template file missing: {shell_path}{W}\n")
         return
 
-    payload = shell_path.read_text().replace("{lhost}", lhost).replace("{lport}", str(lport))
+    # Parse and populate templates
+    payload = (
+        shell_path.read_text()
+        .replace("{lhost}", lhost)
+        .replace("{lport}", str(lport))
+    )
 
-    # Save logic
-    base = get_artifacts_dir(target)
-    shell_dir = base / "shells"
-    shell_dir.mkdir(parents=True, exist_ok=True)
+    # Setup out-file attributes
     ext = shell_path.suffix if shell_path.suffix else ".txt"
-    outfile = shell_dir / f"{stype}_{lport}{ext}"
+    outfile = Path.cwd() / f"{stype.replace('/', '_')}_{lport}{ext}"
     outfile.write_text(payload)
 
-    # ---------------- MODULE HUD (THE BOX) ----------------
-    inner_w = 54
-    print(f"\n{B}┌── {BOLD}MODULE: SHELL GENERATOR{W}{B} {'─' * (inner_w - 22)}┐{W}")
-    print(f"{B}│{W}  {B}Type:{W}      {C}{stype:<38}{W} {B}│{W}")
-    print(f"{B}│{W}  {B}Listener:{W}  {G}{lhost}{W} {B}:{W} {Y}{lport:<28}{W} {B}│{W}")
-    print(f"{B}│{W}  {B}Mode:{W}      {W}{shell_info['mode'].upper():<38}{W} {B}│{W}")
-    print(f"└{'─' * (inner_w + 2)}┘{W}")
+    raw_mode = (getattr(args, "format", None) == "raw")
 
-    # ---------------- THE PAYLOAD BOX ----------------
-    raw = getattr(args, "format", None) == "raw"
-    
-    if not raw:
-        print(f"\n{G}┌── GENERATED PAYLOAD ──────────────────────────────────────{W}")
-        display_lines = payload.splitlines()
-        for line in display_lines[:5]:
-            # Ensure line doesn't break the box width
-            clean_line = line.replace('\t', '    ')
-            print(f"{G}│{W}  {Y}{clean_line[:80]:<80}{W} {G}│{W}")
-        if len(display_lines) > 5:
-            print(f"{G}│{W}  {DIM}... (truncated, see artifact or clipboard){W}{' ':<12} {G}│{W}")
-        print(f"{G}└─────────────────────────────────────────────────────────{W}")
+    if not raw_mode:
+        print(f"\n{W_BOLD}[*] SHELL GENERATION SUMMARY{W}")
+        print(f"  {B}├──{W} Template:   {C}{stype}{W}")
+        print(f"  {B}├──{W} Listener:   {G}{lhost}{W}:{Y}{lport}{W}")
+        print(f"  {B}├──{W} Execution:  {Y}{shell_info['mode']}{W}")
+        print(f"  {B}└──{W} Artifact:   {G}{outfile}{W}")
 
-    # ---------------- FINAL ACTIONS ----------------
-    copied = False
-    if shell_info["mode"] == "inline" and not raw:
-        copied = copy_to_clipboard(payload)
-    print(f"{B}  └── {B}Artifact:{W} {Y}{outfile}{W}")
-    if copied:
-        print(f"{B}  └── {G}Payload copied to clipboard{W}")
-
-    if raw:
+        # Handle inline printing and clipboard operations
+        if shell_info["mode"] == "inline":
+            print(f"\n{W_BOLD}[*] Generated Payload String:{W}")
+            print(f"\n      {Y}{payload.strip()}{W}\n")
+            
+            if copy_to_clipboard(payload):
+                print(f"  {G}[+] Payload copied directly to system clipboard.{W}\n")
+        else:
+            print(f"\n{W_BOLD}[*] Script file compiled and ready.{W}\n")
+    else:
+        # Strict fallback payload output for raw formats
         print(payload)
-    return [{"type": "shell", "data": {"payload": payload, "file": str(outfile)}}]
-    
 
-def copy_to_clipboard(text):
-    import subprocess
-    try:
-        subprocess.run(["xclip", "-selection", "clipboard"], input=text, text=True)
-        return True
-    except:
-        return False
+    return [
+        {
+            "type": "shell",
+            "data": {
+                "payload": payload,
+                "file": str(outfile),
+            }
+        }
+    ]

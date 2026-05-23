@@ -1,0 +1,311 @@
+name: Access Control Discovery
+
+steps:
+  - title: Common Admin Endpoints
+    mode: enum
+    info: |
+      Enumerate common admin panels and privileged functionality.
+
+    entries:
+      - cmd: "/admin"
+        info: common admin panel
+
+      - cmd: "/administrator"
+        info: alternate admin path
+
+      - cmd: "/administrator-panel"
+        info: hidden admin panel
+
+      - cmd: "/admin/login"
+        info: admin login
+
+      - cmd: "/admin-panel"
+        info: alternate naming
+
+      - cmd: "/dashboard"
+        info: admin dashboard
+
+      - cmd: "/manage"
+        info: management interface
+
+      - cmd: "/console"
+        info: admin console
+
+      - cmd: "/backend"
+        info: backend portal
+
+      - cmd: "/internal"
+        info: internal functionality
+
+    look_for:
+      - redirects
+      - HTTP 200
+      - unauthorized responses
+      - different response lengths
+      - admin functionality
+      - management features
+
+  - title: robots.txt Enumeration
+    mode: chain
+    info: |
+      Check robots.txt for hidden paths and sensitive routes.
+
+    entries:
+      - cmd: "/robots.txt"
+        info: robots exclusions
+
+    look_for:
+      - Disallow entries
+      - admin paths
+      - backup directories
+      - internal routes
+      - staging endpoints
+
+    notes:
+      - developers frequently expose sensitive paths
+      - useful for forced browsing
+
+  - title: Source Code Discovery
+    mode: chain
+    info: |
+      Review page source and JavaScript for hidden functionality.
+
+    entries:
+      - cmd: "View page source"
+        info: inspect HTML source
+
+      - cmd: "Review linked JavaScript files"
+        info: hidden routes and APIs
+
+      - cmd: "Search for '/admin'"
+        info: admin references
+
+      - cmd: "Search for 'role'"
+        info: authorization logic
+
+      - cmd: "Search for 'isAdmin'"
+        info: client-side checks
+
+      - cmd: "Search for API endpoints"
+        info: hidden functionality
+
+    look_for:
+      - hidden routes
+      - admin endpoints
+      - API paths
+      - debug functionality
+      - hardcoded roles
+      - feature flags
+
+  - title: Forced Browsing
+    mode: enum
+    info: |
+      Attempt direct access to privileged functionality.
+
+    entries:
+      - cmd: "/admin/delete?username=<USER>"
+        info: delete functionality
+
+      - cmd: "/admin-roles"
+        info: role management
+
+      - cmd: "/admin/users"
+        info: user management
+
+      - cmd: "/api/admin"
+        info: admin API
+
+      - cmd: "/settings"
+        info: application settings
+
+      - cmd: "/moderator"
+        info: moderator functionality
+
+      - cmd: "/staff"
+        info: staff portal
+
+    look_for:
+      - accessible functionality
+      - authorization failures
+      - verbose error messages
+      - leaked data
+      - partial access
+
+  - title: Response Comparison
+    mode: chain
+    info: |
+      Compare authenticated and unauthenticated responses.
+
+    entries:
+      - cmd: "Authenticated request"
+        info: baseline response
+
+      - cmd: "Unauthenticated request"
+        info: access control check
+
+      - cmd: "Low-privileged request"
+        info: privilege comparison
+
+    look_for:
+      - status code differences
+      - response length changes
+      - leaked content
+      - hidden redirects
+      - debug information
+
+    notes:
+      - compare using Burp Comparer
+      - inspect redirect bodies
+      - check hidden JSON fields
+
+  - title: Parameter Discovery
+    mode: enum
+    info: |
+      Identify parameters related to authorization and privilege.
+
+    entries:
+      - cmd: "role=admin"
+        info: role parameter
+
+      - cmd: "isAdmin=true"
+        info: boolean admin flag
+
+      - cmd: "admin=true"
+        info: admin toggle
+
+      - cmd: "roleid=2"
+        info: numeric role identifier
+
+      - cmd: "access=admin"
+        info: access control parameter
+
+      - cmd: "permissions=*"
+        info: permission assignment
+
+    look_for:
+      - reflected parameters
+      - changed privileges
+      - hidden fields
+      - accepted JSON fields
+      - modified responses
+
+  - title: Cookie and Header Analysis
+    mode: enum
+    info: |
+      Inspect cookies and headers for authorization logic.
+
+    entries:
+      - cmd: "Admin=false"
+        info: forgeable admin cookie
+
+      - cmd: "role=user"
+        info: role cookie
+
+      - cmd: "X-User: admin"
+        info: user header
+
+      - cmd: "X-Role: admin"
+        info: role header
+
+      - cmd: "Authorization headers"
+        info: token-based access
+
+    look_for:
+      - client-side authorization
+      - unsigned privilege values
+      - role indicators
+      - privilege flags
+      - insecure trust boundaries
+
+  - title: HTTP Method Testing
+    mode: enum
+    info: |
+      Test alternative HTTP methods against protected functionality.
+
+    entries:
+      - cmd: "GET"
+        info: direct retrieval
+
+      - cmd: "POST"
+        info: normal submission
+
+      - cmd: "PUT"
+        info: update functionality
+
+      - cmd: "PATCH"
+        info: partial updates
+
+      - cmd: "DELETE"
+        info: object deletion
+
+      - cmd: "OPTIONS"
+        info: allowed methods
+
+    look_for:
+      - inconsistent authorization
+      - method confusion
+      - bypassed restrictions
+      - alternate behavior
+
+  - title: Backup and Debug Artifacts
+    mode: enum
+    info: |
+      Search for exposed development and backup files.
+
+    entries:
+      - cmd: "/backup"
+        info: backup directory
+
+      - cmd: "/admin.bak"
+        info: backup file
+
+      - cmd: "/admin.old"
+        info: old version
+
+      - cmd: "/test"
+        info: testing endpoint
+
+      - cmd: "/debug"
+        info: debug functionality
+
+      - cmd: "/swagger"
+        info: API documentation
+
+      - cmd: "/graphql"
+        info: GraphQL endpoint
+
+    look_for:
+      - exposed admin interfaces
+      - test functionality
+      - internal APIs
+      - debug information
+      - API schemas
+
+  - title: Access Control Mapping
+    mode: chain
+    info: |
+      Build a privilege map between roles and functionality.
+
+    entries:
+      - cmd: "Guest user"
+        info: anonymous access
+
+      - cmd: "Authenticated user"
+        info: normal user access
+
+      - cmd: "Admin user"
+        info: privileged functionality
+
+      - cmd: "Compare requests between roles"
+        info: authorization differences
+
+    look_for:
+      - missing authorization checks
+      - inconsistent restrictions
+      - hidden functionality
+      - privilege boundaries
+
+    notes:
+      - compare requests side-by-side
+      - replay privileged requests
+      - identify reusable endpoints

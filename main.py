@@ -310,6 +310,15 @@ def main():
     run_parser.add_argument("--file", "-f", "--in")
     run_parser.add_argument("--format")
     run_parser.add_argument("--mode")
+    run_parser.add_argument("--local")
+    run_parser.add_argument("--remote")
+
+    run_parser.add_argument("--generate", action="store_true")
+    run_parser.add_argument("--deploy", action="store_true")
+    run_parser.add_argument("--name", action="store_true")
+    run_parser.add_argument("--polyglot", action="store_true")
+    run_parser.add_argument("--carrier", action="store_true")
+
     run_parser.add_argument("--share")
     run_parser.add_argument("--windows-auth", action="store_true")
 

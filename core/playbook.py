@@ -11,12 +11,16 @@ def clear_screen():
     os.system("clear")
 
 def inject_vars(text, data):
-    """Replaces {key} with values from the current profile (e.g., {target})."""
-    if not text: return ""
-    matches = re.findall(r'\{(.*?)\}', text)
+    if not text:
+        return ""
+
+    # only replace real variable names
+    matches = re.findall(r'\{([a-zA-Z0-9_]+)\}', text)
+
     for m in matches:
-        val = data.get(m, f"<{m}>")
-        text = text.replace(f"{{{m}}}", str(val))
+        if m in data:
+            text = text.replace(f"{{{m}}}", str(data[m]))
+
     return text
 
 

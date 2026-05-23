@@ -314,6 +314,13 @@ steps:
         - writable files
         - scripts
 
+    - cmd: "find / -type f -name \".*\" -exec ls -l {} \\; 2>/dev/null | grep $(whoami)"
+      info: owned hidden files
+      look_for:
+        - sensitive dotfiles
+        - backup creds
+        - ssh keys    
+
 
 # =========================================================
 # [11] Interesting Files (SUID / Capabilities / Writable)
