@@ -21,13 +21,13 @@ ALIASES = {
     "smb": {
         "aliases": ["smb", "445"],
         "actions": {
-            "list": ["list", "ls", "shares"],
+            "list": ["list", "ls"],
             "connect": ["connect", "conn"]
         }
     },
 
     "util": {
-        "aliases": ["util"],
+        "aliases": ["util", "utility"],
         "actions": {
             "ping": ["ping"]
         }
@@ -44,7 +44,9 @@ ALIASES = {
      "win": {
         "aliases": ["win", "windows"],
         "actions": {
-            "upload": ["upload", "drop"]
+            "upload": ["upload", "drop"],
+            "clipboard": ["clipboard", "clip"]
+
         }
      
     },

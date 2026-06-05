@@ -1,10 +1,8 @@
 import subprocess
 
-from core.paths import get_artifacts_dir
-
 
 PROVIDES = []
-REQUIRES = ["ip"]
+REQUIRES = []
 
 
 def run(data, cred, args):
@@ -17,9 +15,16 @@ def run(data, cred, args):
     R = '\033[91m'
     M = '\033[95m'
 
-    reference = getattr(
+
+    ref = getattr(
         args,
         "reference",
+        False
+    )
+
+    menu = getattr(
+        args,
+        "menu",
         False
     )
 
@@ -27,7 +32,7 @@ def run(data, cred, args):
     # REFERENCE MODE
     # -----------------------------
 
-    if reference:
+    if ref:
 
         print(
             f"\n{B}┌── REFERENCE "
@@ -37,19 +42,19 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}fping -as {M}<SUBNET>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}nmap -sn {M}<SUBNET>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}nmap -sn -iL {M}<HOSTLIST>{W}"
         )
 
         print(
@@ -59,73 +64,109 @@ def run(data, cred, args):
         return
 
     # -----------------------------
+    # MENU
+    # -----------------------------
+
+    method = "fping"
+
+    if menu:
+
+        print(
+            f"\n[1] fping subnet"
+        )
+
+        print(
+            f"[2] nmap subnet"
+        )
+
+        print(
+            f"[3] nmap host file\n"
+        )
+
+        choice = input("> ").strip()
+
+        if choice == "2":
+
+            method = "nmap"
+
+        elif choice == "3":
+
+            method = "file"
+
+    # -----------------------------
     # TARGET
     # -----------------------------
 
     ip = data.get("ip")
 
-    if not ip:
+    if ip:
 
-        print(
-            f"\n{R}[!]{W} "
-            f"No target IP loaded."
+        default_subnet = (
+            ".".join(
+                ip.split(".")[:3]
+            )
+            + ".0/24"
         )
 
-        return
+    else:
 
-    target_name = data.get("name")
+        default_subnet = ""
 
-    if not target_name:
+    subnet = input(
+        f"\nSubnet "
+        f"[{default_subnet}]: "
+    ).strip()
 
-        target_name = "unknown"
+    if not subnet:
 
-    # -----------------------------
-    # ARTIFACTS
-    # -----------------------------
-
-    nmap_dir = (
-        get_artifacts_dir(target_name)
-        / "nmap"
-    )
-
-    nmap_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    output_file = (
-        nmap_dir /
-        "scan.txt"
-    )
+        subnet = default_subnet
 
     # -----------------------------
-    # COMMAND
+    # BUILD COMMAND
     # -----------------------------
 
-    cmd = (
-        f"nmap -sC -sV {ip}"
-    )
+    if method == "fping":
+
+        cmd = (
+            f"fping -as {subnet}"
+        )
+
+    elif method == "nmap":
+
+        cmd = (
+            f"nmap -sn {subnet}"
+        )
+
+    else:
+
+        hostfile = input(
+            "\nHost file: "
+        ).strip()
+
+        cmd = (
+            f"nmap -sn -iL {hostfile}"
+        )
 
     # -----------------------------
     # HEADER
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
-        f"──────────────────────────┐{W}"
+        f"\n{B}┌── MODULE: HOST DISCOVERY "
+        f"─────────────────────┐{W}"
     )
 
     print(
         f"{B}│{W} "
-        f"TARGET: "
-        f"{C}{ip:<38}{W}"
+        f"SUBNET: "
+        f"{C}{subnet:<38}{W}"
         f"{B}│{W}"
     )
 
     print(
         f"{B}│{W} "
-        f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
+        f"METHOD: "
+        f"{C}{method.upper():<38}{W}"
         f"{B}│{W}"
     )
 
@@ -134,11 +175,12 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # COMMAND DISPLAY
+    # COMMAND
     # -----------------------------
 
     print(
-        f"\n{B}[*]{W} COMMAND\n"
+        f"\n{B}[*]{W} "
+        f"COMMAND\n"
     )
 
     print(
@@ -149,46 +191,9 @@ def run(data, cred, args):
     # EXECUTE
     # -----------------------------
 
-    result = subprocess.run(
+    subprocess.run(
         cmd,
-        shell=True,
-        capture_output=True,
-        text=True
-    )
-
-    output_file.write_text(
-        result.stdout
-    )
-
-    # -----------------------------
-    # RESULTS
-    # -----------------------------
-
-    if result.returncode != 0:
-
-        print(
-            f"{R}[!]{W} Scan failed."
-        )
-
-        if result.stderr:
-
-            print(
-                f"\n{R}{result.stderr}{W}"
-            )
-
-        return
-
-    print(
-        f"{G}[+]{W} Scan completed."
-    )
-
-    print(
-        f"{G}[+]{W} Saved: "
-        f"{C}{output_file}{W}"
+        shell=True
     )
 
     print()
-
-    print(
-        result.stdout
-    )

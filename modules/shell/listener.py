@@ -1,3 +1,7 @@
+G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+BOLD = '\033[1m'
+
+
 def run(data, cred, args):
     import subprocess
 
@@ -43,3 +47,35 @@ def run(data, cred, args):
             "method": method
         }
     }]
+
+
+def start_listener(port):
+    import subprocess
+
+    try:
+
+        subprocess.Popen(
+            [
+                "x-terminal-emulator",
+                "-e",
+                f"nc -lvnp {port}"
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        print(
+            f"\n{G}[+]{W} "
+            f"Listener started on "
+            f"{Y}{port}{W}"
+        )
+
+        return True
+
+    except Exception as e:
+
+        print(
+            f"\n{R}[!] Failed to start listener:{W} {e}"
+        )
+
+        return False

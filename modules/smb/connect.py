@@ -1,96 +1,252 @@
+import os
+import subprocess
+
+
+PROVIDES = []
+REQUIRES = ["ip"]
+
+
 def run(data, cred, args):
-    import subprocess
-    import os
-    from core.target import load_current_profile
 
-    # --- ANSI PALETTE ---
-    G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
-    BOLD = '\033[1m'
+    G = '\033[92m'
+    C = '\033[96m'
+    B = '\033[94m'
+    Y = '\033[93m'
+    W = '\033[0m'
+    R = '\033[91m'
+    M = '\033[95m'
 
-    # --- SHARE HANDLING ---
-    share = getattr(args, "share", None)
-    if not share and getattr(args, "extra", []):
-        share = args.extra[0]
+    reference = getattr(
+        args,
+        "reference",
+        False
+    )
 
-    # --- TARGET INFO ---
-    ip = data.get("ip")
-    hostname = data.get("hostname")
-    domain = data.get("domain", "")
+    if reference:
 
-    target_name = hostname if hostname else ip
-
-    if not ip:
-        print(f"\n{R}[!] {W}{BOLD}CONNECTION ABORTED{W}\n{R}  └── {W}Target IP is missing.")
-        return
-
-    # --- ENV SETUP ---
-    env = os.environ.copy()
-    auth_type = "ANONYMOUS"
-
-    # =========================================================
-    # =============== AUTHENTICATED (IMPACKET) =================
-    # =========================================================
-    if cred:
-        cmd_parts = ["impacket-smbclient", "-target-ip", ip]
-
-        user = cred.get("user", "")
-        ctype = cred.get("type", "").lower()
-        secret_val = cred.get("secret", "")
-        ticket_path = cred.get("ccache") or (
-            secret_val if str(secret_val).endswith(".ccache") else None
+        print(
+            f"\n{B}┌── REFERENCE "
+            f"──────────────────────────────────────┐{W}"
         )
 
-        # ---- KERBEROS ----
-        if ctype in ["ccache", "ticket"] or ticket_path:
-            auth_type = f"KERBEROS ({user})"
-            env["KRB5CCNAME"] = str(ticket_path)
-            cmd_parts += ["-k", "-no-pass"]
-            target_str = f"{domain}/{user}@{target_name}"
+        print()
 
-            if domain:
-                cmd_parts += ["-dc-ip", domain]
+        print(
+            f"{Y}smbclient -N //{M}<IP>{W}/{M}<SHARE>{W}"
+        )
 
-        # ---- HASH ----
-        elif ctype == "hash":
-            auth_type = f"NTLM HASH ({user})"
-            cmd_parts += ["-hashes", secret_val]
-            target_str = f"{domain}/{user}@{ip}"
+        print()
 
-        # ---- PASSWORD ----
-        else:
-            auth_type = f"PASSWORD ({user})"
-            target_str = f"{domain}/{user}:{secret_val}@{ip}"
+        print(
+            f"{Y}smbclient //{M}<IP>{W}/{M}<SHARE>{W} "
+            f"-U {M}<USER>%<PASS>{W}"
+        )
 
-        cmd_parts.append(target_str)
-        cmd = " ".join(cmd_parts)
+        print()
 
-        phase_label = "SMB INTERACTIVE (IMPACKET)"
+        print(
+            f"{Y}smbclient -k //{M}<IP>{W}/{M}<SHARE>{W}"
+        )
 
-    # =========================================================
-    # ================== ANONYMOUS (SMBCLIENT) =================
-    # =========================================================
-    else:
-        auth_type = "ANONYMOUS (smbclient)"
+        print(
+            f"\n{B}└──────────────────────────────────────────────┘{W}\n"
+        )
 
-        if share:
-            cmd = f"smbclient -N //{ip}/{share}"
-        else:
-            cmd = f"smbclient -N -L //{ip}"
+        return
 
-        phase_label = "SMB INTERACTIVE (SMBCLIENT)"
+    ip = data.get("ip")
 
-    # --- UI OUTPUT ---
-    print(f"\n{B}[{W}{G}*{W}{B}]{W} {BOLD}PHASE: {phase_label}{W}")
-    print(f"{B}  ├── {B}Target:{W}   {C}{target_name}{W} ({ip})")
-    print(f"{B}  └── {B}Auth:{W}     {G}{auth_type}{W}")
+    if not ip:
 
-    if "KERBEROS" in auth_type:
-        print(f"{B}  └── {B}Ticket:{W}   {Y}{env.get('KRB5CCNAME')}{W}")
+        print(
+            f"\n{R}[!]{W} "
+            f"No target IP loaded."
+        )
 
-    print(f"\n{B}[{G}*{B}]{W} {BOLD}Executing:{W} {Y}{cmd}{W}\n")
+        return
 
-    # --- EXECUTION ---
-    try:
-        subprocess.run(cmd, shell=True, env=env)
-    except KeyboardInterrupt:
-        print(f"\n{R}[!] {W}Session closed.")
+    # -----------------------------
+    # SHARE
+    # -----------------------------
+
+    share = None
+
+    if getattr(args, "extra", None):
+
+        if args.extra:
+
+            share = args.extra[0]
+
+    # -----------------------------
+    # MENU
+    # -----------------------------
+
+    if not share:
+
+        print(
+            f"\n{B}[{W}{G}*{W}{B}]{W} "
+            f"Launching share enumeration...\n"
+        )
+
+        subprocess.run(
+            "ctf smb.shares",
+            shell=True
+        )
+
+        return
+
+    # -----------------------------
+    # AUTH
+    # -----------------------------
+
+    auth_label = "anonymous"
+
+    creds = data.get(
+        "creds",
+        []
+    )
+
+    current_index = data.get(
+        "current_cred"
+    )
+
+    cmd = (
+        f"smbclient "
+        f"-N "
+        f"//{ip}/{share}"
+    )
+
+    if (
+        current_index is not None
+        and current_index < len(creds)
+    ):
+
+        current = creds[
+            current_index
+        ]
+
+        user = current.get(
+            "user"
+        )
+
+        cred_type = current.get(
+            "type"
+        )
+
+        # -------------------------
+        # PASSWORD
+        # -------------------------
+
+        if cred_type == "password":
+
+            secret = current.get(
+                "secret"
+            )
+
+            auth_label = (
+                f"{user} (password)"
+            )
+
+            cmd = (
+                f"smbclient "
+                f"//{ip}/{share} "
+                f"-U "
+                f"'{user}%{secret}'"
+            )
+
+        # -------------------------
+        # NTLM
+        # -------------------------
+
+        elif cred_type == "ntlm":
+
+            secret = current.get(
+                "secret"
+            )
+
+            auth_label = (
+                f"{user} (ntlm)"
+            )
+
+            cmd = (
+                f"smbclient "
+                f"//{ip}/{share} "
+                f"-U '{user}' "
+                f"--pw-nt-hash"
+            )
+
+        # -------------------------
+        # KERBEROS
+        # -------------------------
+
+        elif cred_type == "ticket":
+
+            ccache = current.get(
+                "ccache"
+            )
+
+            if ccache:
+
+                os.environ[
+                    "KRB5CCNAME"
+                ] = ccache
+
+                auth_label = (
+                    f"{user} (kerberos)"
+                )
+
+                cmd = (
+                    f"smbclient "
+                    f"-k "
+                    f"//{ip}/{share}"
+                )
+
+    # -----------------------------
+    # HEADER
+    # -----------------------------
+
+    print(
+        f"\n{B}┌── MODULE: SMB CONNECT "
+        f"────────────────────────┐{W}"
+    )
+
+    print(
+        f"{B}│{W} "
+        f"TARGET: "
+        f"{C}{ip:<38}{W}"
+        f"{B}│{W}"
+    )
+
+    print(
+        f"{B}│{W} "
+        f"SHARE:  "
+        f"{C}{share:<38}{W}"
+        f"{B}│{W}"
+    )
+
+    print(
+        f"{B}│{W} "
+        f"AUTH:   "
+        f"{C}{auth_label:<38}{W}"
+        f"{B}│{W}"
+    )
+
+    print(
+        f"{B}└───────────────────────────────────────────────┘{W}"
+    )
+
+    print(
+        f"\n{B}[{W}{G}*{W}{B}]{W} "
+        f"COMMAND\n"
+    )
+
+    print(
+        f"{Y}{cmd}{W}\n"
+    )
+
+    subprocess.run(
+        cmd,
+        shell=True
+    )
+
+    print()

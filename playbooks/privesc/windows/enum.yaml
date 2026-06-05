@@ -138,6 +138,11 @@ steps:
         - no lockout
         - low complexity
 
+    - cmd: "Get-LocalUser"
+      info: (Powershell) users and description
+      look_for:
+        - credentials in description   
+
 - title: Installed Software
   mode: enum
   entries:

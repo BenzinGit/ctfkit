@@ -1,7 +1,5 @@
 import subprocess
 
-from core.paths import get_artifacts_dir
-
 
 PROVIDES = []
 REQUIRES = ["ip"]
@@ -24,7 +22,7 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # REFERENCE MODE
+    # REFERENCE
     # -----------------------------
 
     if reference:
@@ -37,19 +35,20 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}showmount -e {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}sudo nmap --script nfs* "
+            f"-p111,2049 {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}rpcinfo -p {M}<IP>{W}"
         )
 
         print(
@@ -73,46 +72,32 @@ def run(data, cred, args):
 
         return
 
-    target_name = data.get("name")
-
-    if not target_name:
-
-        target_name = "unknown"
-
     # -----------------------------
-    # ARTIFACTS
+    # COMMANDS
     # -----------------------------
 
-    nmap_dir = (
-        get_artifacts_dir(target_name)
-        / "nmap"
-    )
+    commands = [
 
-    nmap_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+        (
+            "EXPORTS",
+            f"showmount -e {ip}"
+        ),
 
-    output_file = (
-        nmap_dir /
-        "scan.txt"
-    )
+        (
+            "NFS ENUMERATION",
+            f"sudo nmap --script nfs* "
+            f"-p111,2049 {ip}"
+        )
 
-    # -----------------------------
-    # COMMAND
-    # -----------------------------
-
-    cmd = (
-        f"nmap -sC -sV {ip}"
-    )
+    ]
 
     # -----------------------------
     # HEADER
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
-        f"──────────────────────────┐{W}"
+        f"\n{B}┌── MODULE: NFS ENUMERATION "
+        f"────────────────────┐{W}"
     )
 
     print(
@@ -123,72 +108,27 @@ def run(data, cred, args):
     )
 
     print(
-        f"{B}│{W} "
-        f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
-        f"{B}│{W}"
-    )
-
-    print(
         f"{B}└───────────────────────────────────────────────┘{W}"
-    )
-
-    # -----------------------------
-    # COMMAND DISPLAY
-    # -----------------------------
-
-    print(
-        f"\n{B}[*]{W} COMMAND\n"
-    )
-
-    print(
-        f"{Y}{cmd}{W}\n"
     )
 
     # -----------------------------
     # EXECUTE
     # -----------------------------
 
-    result = subprocess.run(
-        cmd,
-        shell=True,
-        capture_output=True,
-        text=True
-    )
-
-    output_file.write_text(
-        result.stdout
-    )
-
-    # -----------------------------
-    # RESULTS
-    # -----------------------------
-
-    if result.returncode != 0:
+    for title, cmd in commands:
 
         print(
-            f"{R}[!]{W} Scan failed."
+            f"\n{B}[{W}{G}*{W}{B}]{W} "
+            f"{title}\n"
         )
 
-        if result.stderr:
+        print(
+            f"{Y}{cmd}{W}\n"
+        )
 
-            print(
-                f"\n{R}{result.stderr}{W}"
-            )
+        subprocess.run(
+            cmd,
+            shell=True
+        )
 
-        return
-
-    print(
-        f"{G}[+]{W} Scan completed."
-    )
-
-    print(
-        f"{G}[+]{W} Saved: "
-        f"{C}{output_file}{W}"
-    )
-
-    print()
-
-    print(
-        result.stdout
-    )
+        print()

@@ -312,6 +312,8 @@ def main():
     run_parser.add_argument("--mode")
     run_parser.add_argument("--local")
     run_parser.add_argument("--remote")
+    run_parser.add_argument("--host")
+    run_parser.add_argument("--cookie")
 
     run_parser.add_argument("--generate", action="store_true")
     run_parser.add_argument("--deploy", action="store_true")
@@ -321,6 +323,8 @@ def main():
 
     run_parser.add_argument("--share")
     run_parser.add_argument("--windows-auth", action="store_true")
+    run_parser.add_argument("--menu", "-m", action="store_true")
+    run_parser.add_argument("--reference", "-r", action="store_true")
 
     run_parser.add_argument("--method")
     run_parser.add_argument("--all", action="store_true")

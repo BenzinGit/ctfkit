@@ -37,19 +37,19 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}nmap -p- {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}nmap -p- --min-rate 1000 -T4 {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}nmap -p- --min-rate 1000 -T4 {M}<HOSTNAME>{W}"
         )
 
         print(
@@ -95,7 +95,7 @@ def run(data, cred, args):
 
     output_file = (
         nmap_dir /
-        "scan.txt"
+        "full.txt"
     )
 
     # -----------------------------
@@ -103,7 +103,10 @@ def run(data, cred, args):
     # -----------------------------
 
     cmd = (
-        f"nmap -sC -sV {ip}"
+        f"nmap -p- "
+        f"--min-rate 1000 "
+        f"-T4 "
+        f"{ip}"
     )
 
     # -----------------------------
@@ -111,7 +114,7 @@ def run(data, cred, args):
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
+        f"\n{B}┌── MODULE: NMAP FULL "
         f"──────────────────────────┐{W}"
     )
 
@@ -125,7 +128,7 @@ def run(data, cred, args):
     print(
         f"{B}│{W} "
         f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
+        f"{C}{'full.txt':<38}{W}"
         f"{B}│{W}"
     )
 

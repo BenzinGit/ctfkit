@@ -1,7 +1,5 @@
 import subprocess
 
-from core.paths import get_artifacts_dir
-
 
 PROVIDES = []
 REQUIRES = ["ip"]
@@ -24,7 +22,7 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # REFERENCE MODE
+    # REFERENCE
     # -----------------------------
 
     if reference:
@@ -37,19 +35,31 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}lftp -u anonymous,anonymous ftp://{M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}lftp -u {M}<USER>{W},{M}<PASS>{W} ftp://{M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}ls{W}"
+        )
+
+        print()
+
+        print(
+            f"{Y}find{W}"
+        )
+
+        print()
+
+        print(
+            f"{Y}mirror .{W}"
         )
 
         print(
@@ -73,46 +83,52 @@ def run(data, cred, args):
 
         return
 
-    target_name = data.get("name")
-
-    if not target_name:
-
-        target_name = "unknown"
-
     # -----------------------------
-    # ARTIFACTS
+    # AUTH
     # -----------------------------
 
-    nmap_dir = (
-        get_artifacts_dir(target_name)
-        / "nmap"
-    )
+    if cred:
 
-    nmap_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+        user = cred.get("user")
+        secret = cred.get("secret")
 
-    output_file = (
-        nmap_dir /
-        "scan.txt"
-    )
+        if user and secret:
 
-    # -----------------------------
-    # COMMAND
-    # -----------------------------
+            auth_type = user
 
-    cmd = (
-        f"nmap -sC -sV {ip}"
-    )
+            cmd = (
+                f"lftp -u "
+                f"{user},{secret} "
+                f"ftp://{ip}"
+            )
+
+        else:
+
+            auth_type = "anonymous"
+
+            cmd = (
+                f"lftp -u "
+                f"anonymous,anonymous "
+                f"ftp://{ip}"
+            )
+
+    else:
+
+        auth_type = "anonymous"
+
+        cmd = (
+            f"lftp -u "
+            f"anonymous,anonymous "
+            f"ftp://{ip}"
+        )
 
     # -----------------------------
     # HEADER
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
-        f"──────────────────────────┐{W}"
+        f"\n{B}┌── MODULE: FTP CONNECT "
+        f"─────────────────────────┐{W}"
     )
 
     print(
@@ -124,8 +140,8 @@ def run(data, cred, args):
 
     print(
         f"{B}│{W} "
-        f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
+        f"AUTH:   "
+        f"{C}{auth_type:<38}{W}"
         f"{B}│{W}"
     )
 
@@ -134,7 +150,7 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # COMMAND DISPLAY
+    # COMMAND
     # -----------------------------
 
     print(
@@ -149,46 +165,9 @@ def run(data, cred, args):
     # EXECUTE
     # -----------------------------
 
-    result = subprocess.run(
+    subprocess.run(
         cmd,
-        shell=True,
-        capture_output=True,
-        text=True
-    )
-
-    output_file.write_text(
-        result.stdout
-    )
-
-    # -----------------------------
-    # RESULTS
-    # -----------------------------
-
-    if result.returncode != 0:
-
-        print(
-            f"{R}[!]{W} Scan failed."
-        )
-
-        if result.stderr:
-
-            print(
-                f"\n{R}{result.stderr}{W}"
-            )
-
-        return
-
-    print(
-        f"{G}[+]{W} Scan completed."
-    )
-
-    print(
-        f"{G}[+]{W} Saved: "
-        f"{C}{output_file}{W}"
+        shell=True
     )
 
     print()
-
-    print(
-        result.stdout
-    )

@@ -1,6 +1,4 @@
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import yaml
@@ -25,93 +23,188 @@ DIM = '\033[2m'
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 
-EXPLOIT_DIR = BASE_DIR / "exploits" / "kernel"
+EXPLOIT_DIR = (
+    BASE_DIR /
+    "exploits" /
+    "windows" /
+    "kernel"
+)
 
-CACHE_DIR = Path.home() / ".ctfkit" / "cache" / "kernel"
+# =========================================================
+# MULTILINE INPUT
+# =========================================================
 
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+def multiline_input(prompt):
+
+    print(f"\n{prompt}")
+
+    print(
+        f"{DIM}"
+        f"(finish with CTRL+D / CTRL+Z)"
+        f"{W}"
+    )
+
+    lines = []
+
+    try:
+
+        while True:
+
+            lines.append(input())
+
+    except EOFError:
+
+        pass
+
+    return "\n".join(lines)
 
 # =========================================================
 # PARSERS
 # =========================================================
 
-def parse_kernel(text):
+def parse_build(text):
 
-    match = re.search(r"(\d+)\.(\d+)", text)
+    match = re.search(
+        r"Build\s+(\d+)",
+        text,
+        re.I
+    )
 
-    if not match:
-        return None
+    if match:
+        return int(match.group(1))
 
-    return f"{match.group(1)}.{match.group(2)}"
+    match = re.search(
+        r"(\d{5})",
+        text
+    )
 
-
-def parse_distro(text):
-
-    text = text.lower().strip()
-
-    if not text:
-        return None
-
-    known = [
-        "ubuntu",
-        "debian",
-        "kali",
-        "arch",
-        "fedora",
-        "centos",
-        "redhat",
-        "rhel",
-        "parrot"
-    ]
-
-    for distro in known:
-
-        if distro in text:
-            return distro
+    if match:
+        return int(match.group(1))
 
     return None
 
 
-def parse_version(text):
+def parse_arch(text):
 
-    match = re.search(r"(\d+\.\d+)", text)
+    text = text.lower()
 
-    if not match:
-        return None
+    if (
+        "x64" in text or
+        "64-based" in text or
+        "amd64" in text
+    ):
+        return "x64"
 
-    return match.group(1)
+    if (
+        "x86" in text or
+        "32" in text
+    ):
+        return "x86"
+
+    return None
+
+
+def parse_hotfixes(text):
+
+    return re.findall(
+        r"(KB\d+)",
+        text,
+        re.I
+    )
+
+
+def parse_privs(text):
+
+    found = []
+
+    known = [
+
+        "SeImpersonatePrivilege",
+        "SeAssignPrimaryTokenPrivilege",
+        "SeLoadDriverPrivilege",
+        "SeBackupPrivilege",
+        "SeRestorePrivilege",
+        "SeDebugPrivilege",
+        "SeTakeOwnershipPrivilege",
+
+    ]
+
+    for priv in known:
+
+        if priv.lower() in text.lower():
+
+            found.append(priv)
+
+    return found
+
+
+def parse_uac(text):
+
+    result = {
+
+        "EnableLUA": None,
+        "ConsentPromptBehaviorAdmin": None,
+
+    }
+
+    enable = re.search(
+        r"EnableLUA\s+REG_DWORD\s+(0x\d+)",
+        text,
+        re.I
+    )
+
+    if enable:
+
+        result["EnableLUA"] = (
+            enable.group(1)
+        )
+
+    consent = re.search(
+        r"ConsentPromptBehaviorAdmin\s+REG_DWORD\s+(0x\d+)",
+        text,
+        re.I
+    )
+
+    if consent:
+
+        result["ConsentPromptBehaviorAdmin"] = (
+            consent.group(1)
+        )
+
+    return result
+
+
+def parse_spooler(text):
+
+    return (
+        "running" in text.lower()
+    )
+
 
 # =========================================================
 # HELPERS
 # =========================================================
 
-def version_to_tuple(version):
-
-    try:
-        return tuple(map(int, version.split(".")))
-
-    except:
-        return (0, 0)
-
-
-def kernel_in_range(kernel, min_v=None, max_v=None):
-
-    kernel_t = version_to_tuple(kernel)
+def build_in_range(
+    build,
+    min_v=None,
+    max_v=None,
+):
 
     if min_v:
 
-        if kernel_t < version_to_tuple(min_v):
+        if build < min_v:
             return False
 
     if max_v:
 
-        if kernel_t > version_to_tuple(max_v):
+        if build > max_v:
             return False
 
     return True
 
 # =========================================================
-# LOADER
+# LOAD
 # =========================================================
 
 def load_exploits():
@@ -126,21 +219,26 @@ def load_exploits():
         if not folder.is_dir():
             continue
 
-        meta_path = folder / "meta.yaml"
+        meta = (
+            folder /
+            "meta.yaml"
+        )
 
-        if not meta_path.exists():
+        if not meta.exists():
             continue
 
         try:
 
-            meta = yaml.safe_load(meta_path.read_text())
+            data = yaml.safe_load(
+                meta.read_text()
+            )
 
-            if not meta:
+            if not data:
                 continue
 
-            meta["folder"] = folder
+            data["folder"] = folder
 
-            exploits.append(meta)
+            exploits.append(data)
 
         except Exception:
             continue
@@ -148,78 +246,124 @@ def load_exploits():
     return exploits
 
 # =========================================================
-# MATCHER
+# MATCHING
 # =========================================================
 
-def exploit_matches(target, exploit):
+def exploit_matches(
+    target,
+    exploit,
+):
 
-    # -------------------------
-    # DISTRO
-    # -------------------------
+    # -----------------------------------------------------
+    # BUILD
+    # -----------------------------------------------------
 
-    exploit_distros = exploit.get("distro", [])
+    build = exploit.get(
+        "build",
+        {}
+    )
 
-    if exploit_distros:
+    min_v = build.get("min")
+    max_v = build.get("max")
 
-        if target["distro"] not in exploit_distros:
-            return False
-
-    # -------------------------
-    # KERNEL RANGE
-    # -------------------------
-
-    kernel = exploit.get("kernel", {})
-
-    min_v = kernel.get("min")
-    max_v = kernel.get("max")
-
-    if not kernel_in_range(
-        target["kernel"],
+    if not build_in_range(
+        target["build"],
         min_v,
-        max_v
+        max_v,
     ):
         return False
+
+    # -----------------------------------------------------
+    # ARCH
+    # -----------------------------------------------------
+
+    arch = exploit.get("arch")
+
+    if arch:
+
+        if arch != target["arch"]:
+            return False
+
+    # -----------------------------------------------------
+    # REQUIRED
+    # -----------------------------------------------------
+
+    required = exploit.get(
+        "requires",
+        []
+    )
+
+    for item in required:
+
+        # -------------------------------------------------
+        # PRIVS
+        # -------------------------------------------------
+
+        if item.startswith("priv:"):
+
+            priv = item.split(
+                ":",
+                1
+            )[1]
+
+            if priv not in target["privs"]:
+                return False
+
+        # -------------------------------------------------
+        # SPOOLER
+        # -------------------------------------------------
+
+        elif item == "spooler":
+
+            if not target["spooler"]:
+                return False
+
+        # -------------------------------------------------
+        # UAC
+        # -------------------------------------------------
+
+        elif item == "uac":
+
+            if (
+                target["uac"]
+                .get("EnableLUA")
+                != "0x1"
+            ):
+                return False
+
+        # -------------------------------------------------
+        # HOTFIX MISSING
+        # -------------------------------------------------
+
+        elif item.startswith("missing:"):
+
+            kb = item.split(
+                ":",
+                1
+            )[1]
+
+            if kb in target["hotfixes"]:
+                return False
 
     return True
 
 
-def find_matches(target, exploits):
+def find_matches(
+    target,
+    exploits,
+):
 
     matches = []
 
     for exploit in exploits:
 
-        if exploit_matches(target, exploit):
+        if exploit_matches(
+            target,
+            exploit,
+        ):
             matches.append(exploit)
 
     return matches
-
-# =========================================================
-# CACHE / LOCAL
-# =========================================================
-
-def cache_path(exploit):
-
-    cve = exploit.get("cve", "unknown")
-
-    return CACHE_DIR / cve
-
-
-def exploit_is_cached(exploit):
-
-    return cache_path(exploit).exists()
-
-
-def exploit_has_local_files(folder):
-
-    for item in folder.iterdir():
-
-        if item.name == "meta.yaml":
-            continue
-
-        return True
-
-    return False
 
 # =========================================================
 # RENDER
@@ -227,257 +371,369 @@ def exploit_has_local_files(folder):
 
 def render_target(target):
 
-    print(f"\n{B}[*]{W} TARGET\n")
+    print(
+        f"\n{B}[*]{W} TARGET\n"
+    )
 
-    print(f"  {G}├──{W} kernel:  {Y}{target['kernel']}{W}")
-    print(f"  {G}├──{W} distro: {Y}{target['distro']}{W}")
-    print(f"  {G}└──{W} version: {Y}{target['version']}{W}")
+    print(
+        f"  {G}├──{W} "
+        f"build: "
+        f"{Y}{target['build']}{W}"
+    )
+
+    print(
+        f"  {G}├──{W} "
+        f"arch: "
+        f"{Y}{target['arch']}{W}"
+    )
+
+    print(
+        f"  {G}├──{W} "
+        f"spooler: "
+        f"{Y}{target['spooler']}{W}"
+    )
+
+    print(
+        f"  {G}├──{W} "
+        f"UAC: "
+        f"{Y}{target['uac']['EnableLUA']}{W}"
+    )
+
+    print(
+        f"  {G}├──{W} "
+        f"hotfixes: "
+        f"{Y}{len(target['hotfixes'])}{W}"
+    )
+
+    if target["privs"]:
+
+        print(
+            f"  {G}└──{W} "
+            f"privs: "
+            f"{Y}{', '.join(target['privs'])}{W}"
+        )
+
+    else:
+
+        print(
+            f"  {G}└──{W} "
+            f"privs: "
+            f"{R}none parsed{W}"
+        )
 
 
 def render_matches(matches):
 
-    print(f"\n{B}[*]{W} MATCHING EXPLOITS\n")
+    print(
+        f"\n{B}[*]{W} "
+        f"MATCHING EXPLOITS\n"
+    )
 
-    for idx, exploit in enumerate(matches, start=1):
+    for idx, exploit in enumerate(
+        matches,
+        start=1
+    ):
 
-        name = exploit.get("name", "unknown")
-        cve = exploit.get("cve", "unknown")
+        name = exploit.get(
+            "name",
+            "unknown"
+        )
 
-        if exploit_is_cached(exploit):
-            status = f"{G}CACHED{W}"
-
-        elif exploit_has_local_files(exploit["folder"]):
-            status = f"{G}LOCAL{W}"
-
-        else:
-            status = f"{Y}REMOTE{W}"
+        cve = exploit.get(
+            "cve",
+            "unknown"
+        )
 
         print(
             f"  [{idx}] "
             f"{W_BOLD}{name}{W} "
-            f"({Y}{cve}{W}) "
-            f"[{status}]"
+            f"({Y}{cve}{W})"
         )
 
 
 def render_metadata(exploit):
 
-    compile_cmd = exploit.get("compile")
-    run_cmd = exploit.get("run")
-    notes = exploit.get("notes", [])
-    source = exploit.get("source", {})
+    print(
+        f"\n{G}"
+        f"┌── EXPLOIT METADATA "
+        f"────────────────────────────────────┐{W}"
+    )
 
-    print(f"\n{G}┌── EXPLOIT METADATA ─────────────────────────────────────┐{W}")
+    build = exploit.get(
+        "build",
+        {}
+    )
 
-    if compile_cmd:
-        print(f"{G}│{W} compile: {Y}{compile_cmd}{W}")
+    print(
+        f"{G}│{W} "
+        f"build range: "
+        f"{build.get('min')} - "
+        f"{build.get('max')}"
+    )
 
-    if run_cmd:
+    arch = exploit.get("arch")
 
-        if isinstance(run_cmd, list):
+    if arch:
 
-            for cmd in run_cmd:
-                print(f"{G}│{W} run:     {Y}{cmd}{W}")
+        print(
+            f"{G}│{W} "
+            f"arch: "
+            f"{arch}"
+        )
 
-        else:
-            print(f"{G}│{W} run:     {Y}{run_cmd}{W}")
+    requires = exploit.get(
+        "requires",
+        []
+    )
 
-    github = source.get("github")
+    if requires:
 
-    if github:
-        print(f"{G}│{W} source:  {C}{github}{W}")
+        print(
+            f"{G}│{W} "
+            f"requires:"
+        )
+
+        for item in requires:
+
+            print(
+                f"{G}│{W} "
+                f"  - {item}"
+            )
+
+    notes = exploit.get(
+        "notes",
+        []
+    )
 
     if notes:
 
         print(f"{G}│{W}")
 
         for note in notes:
-            print(f"{G}│{W} note: {DIM}{note}{W}")
 
-    print(f"{G}└──────────────────────────────────────────────────────────┘{W}")
-
-# =========================================================
-# STAGING
-# =========================================================
-
-def stage_folder(folder):
-
-    copied = []
-
-    for item in folder.iterdir():
-
-        if not item.is_file():
-            continue
-
-        if item.name == "meta.yaml":
-            continue
-
-        destination = Path.cwd() / item.name
-
-        shutil.copy(item, destination)
-
-        copied.append(item.name)
-
-    return copied
-
-
-def stage_exploit(exploit):
-
-    # -------------------------
-    # CACHE
-    # -------------------------
-
-    cache = cache_path(exploit)
-
-    if cache.exists():
-
-        copied = stage_folder(cache)
-
-        print(f"\n{G}[+]{W} staged from cache")
-
-    # -------------------------
-    # LOCAL
-    # -------------------------
-
-    elif exploit_has_local_files(exploit["folder"]):
-
-        copied = stage_folder(exploit["folder"])
-
-        print(f"\n{G}[+]{W} staged local exploit")
-
-    # -------------------------
-    # REMOTE
-    # -------------------------
-
-    else:
-
-        source = exploit.get("source", {})
-        github = source.get("github")
-
-        if not github:
-
-            print(f"\n{R}[!] No source available.{W}")
-            return
-
-        print(f"\n{B}[*]{W} downloading exploit")
-
-        try:
-
-            subprocess.run(
-                [
-                    "git",
-                    "clone",
-                    github,
-                    str(cache)
-                ],
-                check=True
+            print(
+                f"{G}│{W} "
+                f"note: "
+                f"{DIM}{note}{W}"
             )
 
-        except Exception as e:
+    source = exploit.get(
+        "source",
+        {}
+    )
 
-            print(f"\n{R}[!] download failed:{W} {e}")
-            return
+    github = source.get("github")
 
-        copied = stage_folder(cache)
+    if github:
 
-    # -------------------------
-    # RENDER
-    # -------------------------
+        print(
+            f"{G}│{W} "
+            f"source: "
+            f"{C}{github}{W}"
+        )
 
-    print(f"\n{B}[*]{W} STAGED FILES\n")
-
-    for item in copied:
-        print(f"  {G}├──{W} {item}")
-
-    render_metadata(exploit)
+    print(
+        f"{G}"
+        f"└──────────────────────────────────────────────────────────┘{W}"
+    )
 
 # =========================================================
 # MAIN
 # =========================================================
 
-def run(data=None, cred=None, args=None):
+def run(
+    data=None,
+    cred=None,
+    args=None,
+):
 
-    print(f"\n{W_BOLD}[*] KERNEL EXPLOIT MATCHER{W}\n")
+    print(
+        f"\n{W_BOLD}"
+        f"[*] WINDOWS KERNEL MATCHER{W}"
+    )
 
-    # -------------------------
-    # KERNEL
-    # -------------------------
+    # =====================================================
+    # SYSTEMINFO
+    # =====================================================
 
-    try:
+    print(
+        f"\n{B}[*]{W} "
+        f"SYSTEMINFO\n"
+    )
 
-        uname = input(f"{B}uname{W}> ").strip()
+    print(
+        f"  {B}└──{W} "
+        f"systeminfo"
+    )
 
-    except (KeyboardInterrupt, EOFError):
-        print()
+    systeminfo = multiline_input(
+        f"{B}paste systeminfo{W}"
+    )
+
+    build = parse_build(
+        systeminfo
+    )
+
+    if not build:
+
+        print(
+            f"\n{R}[!] "
+            f"Failed to parse build.{W}"
+        )
+
         return data
 
-    kernel = parse_kernel(uname)
+    arch = parse_arch(
+        systeminfo
+    )
 
-    if not kernel:
+    hotfixes = parse_hotfixes(
+        systeminfo
+    )
 
-        print(f"\n{R}[!] Failed to parse kernel.{W}")
-        return data
+    # =====================================================
+    # PRIVILEGES
+    # =====================================================
 
-    # -------------------------
-    # DISTRO
-    # -------------------------
+    print(
+        f"\n{B}[*]{W} "
+        f"PRIVILEGES\n"
+    )
 
-    try:
+    print(
+        f"  {B}└──{W} "
+        f"whoami /priv"
+    )
 
-        os_release = input(f"{B}os-release{W}> ").strip()
+    priv_text = multiline_input(
+        f"{B}paste whoami /priv{W}"
+    )
 
-    except (KeyboardInterrupt, EOFError):
-        print()
-        return data
+    privs = parse_privs(
+        priv_text
+    )
 
-    distro = parse_distro(os_release)
-    version = parse_version(os_release)
+    # =====================================================
+    # SPOOLER
+    # =====================================================
 
+    print(
+        f"\n{B}[*]{W} "
+        f"SPOOLER\n"
+    )
+
+    print(
+        f"  {B}└──{W} "
+        f"sc query spooler"
+    )
+
+    spooler_text = multiline_input(
+        f"{B}paste spooler output{W}"
+    )
+
+    spooler = parse_spooler(
+        spooler_text
+    )
+
+    # =====================================================
+    # UAC
+    # =====================================================
+
+    print(
+        f"\n{B}[*]{W} "
+        f"UAC\n"
+    )
+
+    print(
+        f"  {B}├──{W} "
+        f"REG QUERY "
+        f"HKLM\\...\\Policies\\System "
+        f"/v EnableLUA"
+    )
+
+    print(
+        f"  {B}└──{W} "
+        f"REG QUERY "
+        f"HKLM\\...\\Policies\\System "
+        f"/v ConsentPromptBehaviorAdmin"
+    )
+
+    uac_text = multiline_input(
+        f"{B}paste UAC registry output{W}"
+    )
+
+    uac = parse_uac(
+        uac_text
+    )
+
+    # =====================================================
+    # TARGET
+    # =====================================================
 
     target = {
-        "kernel": kernel,
-        "distro": distro,
-        "version": version
+
+        "build": build,
+        "arch": arch,
+        "hotfixes": hotfixes,
+        "privs": privs,
+        "spooler": spooler,
+        "uac": uac,
+
     }
 
     render_target(target)
 
-    # -------------------------
+    # =====================================================
     # LOAD
-    # -------------------------
+    # =====================================================
 
     exploits = load_exploits()
 
     if not exploits:
 
-        print(f"\n{R}[!] No exploits loaded.{W}")
+        print(
+            f"\n{R}[!] "
+            f"No exploits loaded.{W}"
+        )
+
         return data
 
-    # -------------------------
+    # =====================================================
     # MATCH
-    # -------------------------
+    # =====================================================
 
-    matches = find_matches(target, exploits)
+    matches = find_matches(
+        target,
+        exploits,
+    )
 
     if not matches:
 
-        print(f"\n{R}[!] No matching exploits found.{W}")
+        print(
+            f"\n{R}[!] "
+            f"No matching exploits found.{W}"
+        )
+
         return data
 
     render_matches(matches)
 
-    # -------------------------
+    # =====================================================
     # SELECT
-    # -------------------------
+    # =====================================================
 
     print()
 
     try:
 
-        choice = input(f"{B}select{W}> ").strip()
+        choice = input(
+            f"{B}select{W}> "
+        ).strip()
 
     except (KeyboardInterrupt, EOFError):
+
         print()
+
         return data
 
     if not choice.isdigit():
@@ -485,11 +741,18 @@ def run(data=None, cred=None, args=None):
 
     choice = int(choice)
 
-    if choice < 1 or choice > len(matches):
+    if (
+        choice < 1 or
+        choice > len(matches)
+    ):
         return data
 
-    exploit = matches[choice - 1]
+    exploit = matches[
+        choice - 1
+    ]
 
-    stage_exploit(exploit)
+    render_metadata(
+        exploit
+    )
 
     return data

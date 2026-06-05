@@ -23,8 +23,22 @@ PRIVS = {
     # -----------------------------------------------------
 
     "SeImpersonatePrivilege": {
-        "module": "ctf privesc.windows.tokens",
-        "description": "token impersonation attacks",
+
+        "description":
+            "token impersonation attacks",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.tokens",
+
+                "reason":
+                    "potato family impersonation attacks",
+            },
+
+        ],
+
         "abuse": [
             "PrintSpoofer",
             "JuicyPotato",
@@ -34,8 +48,22 @@ PRIVS = {
     },
 
     "SeAssignPrimaryTokenPrivilege": {
-        "module": "ctf privesc.windows.tokens",
-        "description": "token impersonation attacks",
+
+        "description":
+            "token impersonation attacks",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.tokens",
+
+                "reason":
+                    "primary token abuse",
+            },
+
+        ],
+
         "abuse": [
             "JuicyPotato",
         ],
@@ -46,8 +74,22 @@ PRIVS = {
     # -----------------------------------------------------
 
     "SeTakeOwnershipPrivilege": {
-        "module": "ctf privesc.windows.ownership",
-        "description": "take ownership of sensitive files",
+
+        "description":
+            "take ownership of sensitive files",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.ownership",
+
+                "reason":
+                    "ownership abuse",
+            },
+
+        ],
+
         "abuse": [
             "takeown",
             "icacls",
@@ -55,25 +97,71 @@ PRIVS = {
     },
 
     # -----------------------------------------------------
-    # BACKUP
+    # BACKUP / RESTORE
     # -----------------------------------------------------
 
     "SeBackupPrivilege": {
-        "module": "ctf privesc.windows.backup",
-        "description": "read protected files and hives",
+
+        "description":
+            "backup operators and protected file abuse",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.backup",
+
+                "reason":
+                    "registry hives and protected files",
+            },
+
+            {
+                "name":
+                    "ctf privesc.windows.services",
+
+                "reason":
+                    "service control abuse",
+            },
+
+        ],
+
         "abuse": [
             "reg save",
             "diskshadow",
             "robocopy /b",
+            "service abuse",
         ],
     },
 
     "SeRestorePrivilege": {
-        "module": "ctf privesc.windows.backup",
-        "description": "restore protected files",
+
+        "description":
+            "restore abuse and service control attacks",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.backup",
+
+                "reason":
+                    "registry restore and overwrite abuse",
+            },
+
+            {
+                "name":
+                    "ctf privesc.windows.serveroperators",
+
+                "reason":
+                    "service control abuse",
+            },
+
+        ],
+
         "abuse": [
             "registry restore",
             "overwrite protected files",
+            "service abuse",
         ],
     },
 
@@ -82,11 +170,53 @@ PRIVS = {
     # -----------------------------------------------------
 
     "SeDebugPrivilege": {
-        "module": "ctf privesc.windows.debug",
-        "description": "debug and access SYSTEM processes",
+
+        "description":
+            "debug and access SYSTEM processes",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.debug",
+
+                "reason":
+                    "SYSTEM process interaction",
+            },
+
+        ],
+
         "abuse": [
             "lsass dumping",
             "token theft",
+        ],
+    },
+
+    # -----------------------------------------------------
+    # LOAD DRIVER
+    # -----------------------------------------------------
+
+    "SeLoadDriverPrivilege": {
+
+        "description":
+            "load vulnerable kernel drivers",
+
+        "modules": [
+
+            {
+                "name":
+                    "ctf privesc.windows.drivers",
+
+                "reason":
+                    "Capcom.sys driver exploitation",
+            },
+
+        ],
+
+        "abuse": [
+            "Capcom.sys",
+            "EoPLoadDriver",
+            "SYSTEM shell",
         ],
     },
 }
@@ -108,18 +238,18 @@ def parse_privileges(text):
             if priv.lower() not in line.lower():
                 continue
 
-            # ---------------------------------------------
-            # STATE
-            # ---------------------------------------------
-
             enabled = (
                 "enabled" in line.lower()
             )
 
             found.append({
+
                 "name": priv,
+
                 "enabled": enabled,
+
                 "meta": PRIVS[priv],
+
             })
 
     return found
@@ -144,7 +274,10 @@ def render_privs(privs):
             else "├──"
         )
 
-        color = G if entry["enabled"] else Y
+        color = (
+            G if entry["enabled"]
+            else Y
+        )
 
         state = (
             "enabled"
@@ -176,7 +309,10 @@ def render_paths(privs):
             else "├──"
         )
 
-        color = G if entry["enabled"] else Y
+        color = (
+            G if entry["enabled"]
+            else Y
+        )
 
         print(
             f"  {B}{connector}{W} "
@@ -185,15 +321,48 @@ def render_paths(privs):
 
         print(
             f"  {B}│{W} "
-            f"module: {C}{meta['module']}{W}"
+            f"purpose: "
+            f"{meta['description']}"
         )
 
-        print(
-            f"  {B}│{W} "
-            f"purpose: {meta['description']}"
+        # =================================================
+        # MODULES
+        # =================================================
+
+        modules = meta.get(
+            "modules",
+            []
         )
 
-        abuses = meta.get("abuse", [])
+        if modules:
+
+            print(
+                f"  {B}│{W} "
+                f"modules:"
+            )
+
+            for module in modules:
+
+                print(
+                    f"  {B}│{W} "
+                    f"  ├── "
+                    f"{C}{module['name']}{W}"
+                )
+
+                print(
+                    f"  {B}│{W} "
+                    f"  │   "
+                    f"{module['reason']}"
+                )
+
+        # =================================================
+        # TECHNIQUES
+        # =================================================
+
+        abuses = meta.get(
+            "abuse",
+            []
+        )
 
         if abuses:
 
@@ -206,18 +375,20 @@ def render_paths(privs):
 
                 print(
                     f"  {B}│{W} "
-                    f"  └── {abuse}"
+                    f"  └── "
+                    f"{abuse}"
                 )
 
-        # -------------------------------------------------
-        # ENABLED
-        # -------------------------------------------------
+        # =================================================
+        # ENABLED / DISABLED
+        # =================================================
 
         if not entry["enabled"]:
 
             print(
                 f"  {B}│{W} "
-                f"{Y}note:{W} privilege currently disabled"
+                f"{Y}note:{W} "
+                f"privilege currently disabled"
             )
 
         print()
@@ -226,8 +397,10 @@ def render_paths(privs):
 def render_enable_hint(privs):
 
     disabled = [
+
         p for p in privs
         if not p["enabled"]
+
     ]
 
     if not disabled:
@@ -241,7 +414,8 @@ def render_enable_hint(privs):
 
     print(
         f"{Y}│{W} "
-        f"Import-Module .\\Enable-Privilege.ps1"
+        f"Import-Module "
+        f".\\Enable-Privilege.ps1"
     )
 
     print(
@@ -285,7 +459,8 @@ def run(data=None, cred=None, args=None):
     if not text.strip():
 
         print(
-            f"\n{R}[!] No input provided.{W}"
+            f"\n{R}[!] "
+            f"No input provided.{W}"
         )
 
         return data

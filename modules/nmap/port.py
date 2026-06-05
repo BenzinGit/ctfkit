@@ -7,6 +7,33 @@ PROVIDES = []
 REQUIRES = ["ip"]
 
 
+PORT_SCRIPTS = {
+
+    "21": "ftp*",
+    "22": "ssh*",
+    "25": "smtp*",
+    "53": "dns*",
+    "80": "http*",
+    "110": "pop3*",
+    "111": "rpc*",
+    "139": "smb*",
+    "143": "imap*",
+    "443": "http*",
+    "445": "smb*",
+    "1433": "ms-sql*",
+    "1521": "oracle*",
+    "2049": "nfs*",
+    "3306": "mysql*",
+    "3389": "rdp*",
+    "5432": "pgsql*",
+    "5985": "http*",
+    "5986": "http*",
+    "6379": "redis*",
+    "8080": "http*",
+    "8443": "http*"
+}
+
+
 def run(data, cred, args):
 
     G = '\033[92m'
@@ -24,7 +51,7 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # REFERENCE MODE
+    # REFERENCE
     # -----------------------------
 
     if reference:
@@ -37,19 +64,37 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}nmap -A -p {M}<PORT>{W} {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}nmap -sC -sV -A -p 445 --script smb* {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}nmap -sC -sV -A -p 53 --script dns* {M}<IP>{W}"
+        )
+
+        print()
+
+        print(
+            f"{Y}nmap -sC -sV -A -p 1433 --script ms-sql* {M}<IP>{W}"
+        )
+
+        print()
+
+        print(
+            f"{Y}nmap -sC -sV -A -p 3306 --script mysql* {M}<IP>{W}"
+        )
+
+        print()
+
+        print(
+            f"{Y}nmap -sC -sV -A -p 2049 --script nfs* {M}<IP>{W}"
         )
 
         print(
@@ -80,6 +125,32 @@ def run(data, cred, args):
         target_name = "unknown"
 
     # -----------------------------
+    # PORT
+    # -----------------------------
+
+    port = None
+
+    if getattr(args, "extra", None):
+
+        if args.extra:
+
+            port = args.extra[0]
+
+    while not port:
+
+        port = input(
+            "\nPort: "
+        ).strip()
+
+    # -----------------------------
+    # NSE
+    # -----------------------------
+
+    script = PORT_SCRIPTS.get(
+        str(port)
+    )
+
+    # -----------------------------
     # ARTIFACTS
     # -----------------------------
 
@@ -95,7 +166,7 @@ def run(data, cred, args):
 
     output_file = (
         nmap_dir /
-        "scan.txt"
+        f"port-{port}.txt"
     )
 
     # -----------------------------
@@ -103,16 +174,28 @@ def run(data, cred, args):
     # -----------------------------
 
     cmd = (
-        f"nmap -sC -sV {ip}"
+        f"nmap "
+        f"-sC "
+        f"-sV "
+        f"-A "
+        f"-p {port} "
     )
+
+    if script:
+
+        cmd += (
+            f"--script {script} "
+        )
+
+    cmd += ip
 
     # -----------------------------
     # HEADER
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
-        f"──────────────────────────┐{W}"
+        f"\n{B}┌── MODULE: PORT ENUMERATION "
+        f"──────────────────┐{W}"
     )
 
     print(
@@ -124,8 +207,15 @@ def run(data, cred, args):
 
     print(
         f"{B}│{W} "
-        f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
+        f"PORT:   "
+        f"{C}{port:<38}{W}"
+        f"{B}│{W}"
+    )
+
+    print(
+        f"{B}│{W} "
+        f"SCRIPT: "
+        f"{C}{script or 'none':<38}{W}"
         f"{B}│{W}"
     )
 

@@ -1,7 +1,10 @@
 from modules.crack.detect_hash import detect_mode
+from modules.crack.detect_hash import detect_hashes
+
 
 def run(data, cred, args):
     import subprocess
+    import tempfile
     from pathlib import Path
 
     # --- CORE PALETTE ---
@@ -9,81 +12,223 @@ def run(data, cred, args):
     BOLD, DIM = '\033[1m', '\033[2m'
 
     # ---------------- HELPERS ----------------
-    def require_file(val, name):
-        if not val:
-            print(f"\n{R}[!] {W}{BOLD}MISSING FILE{W}\n{B}  └── {B}Option:{W} --{name}")
+
+    def resolve_hash_input():
+
+        file = getattr(args, "file", None)
+
+        # positional fallback
+        if not file and hasattr(args, "extra") and args.extra:
+            file = args.extra[0]
+
+        if not file:
+            print(f"\n{R}[!] {W}{BOLD}MISSING FILE{W}")
+            print(f"{B}  └── {B}Option:{W} --file")
             return None
-        path = Path(val).expanduser().resolve()
-        if not path.exists():
-            print(f"\n{R}[!] {W}{BOLD}NOT FOUND{W}\n{B}  └── {B}Path:{W} {path}")
-            return None
-        return path
+
+        candidate = Path(file).expanduser().resolve()
+
+        # existing file
+        if candidate.exists():
+            return candidate
+
+        # raw hash support
+        tmp = Path(tempfile.gettempdir()) / "ctf_hash_input.txt"
+        tmp.write_text(file + "\n")
+
+        return tmp
 
     quiet = getattr(args, "quiet", False)
-    hashfile = require_file(getattr(args, "file", None), "file")
-    if not hashfile: return
 
-    # Wordlist Logic
-    wordlist_path = getattr(args, "wordlist", None) or "/usr/share/wordlists/rockyou.txt"
-    wordlist = Path(wordlist_path).expanduser().resolve()
-    if not wordlist.exists():
-        print(f"\n{R}[!] {W}{BOLD}WORDLIST MISSING{W}\n{B}  └── {W}{wordlist}")
+    hashfile = resolve_hash_input()
+
+    if not hashfile:
         return
 
-    # Mode Detection
+    # ---------------- WORDLIST ----------------
+
+    wordlist_path = (
+        getattr(args, "wordlist", None)
+        or "/usr/share/wordlists/rockyou.txt"
+    )
+
+    wordlist = Path(wordlist_path).expanduser().resolve()
+
+    if not wordlist.exists():
+        print(f"\n{R}[!] {W}{BOLD}WORDLIST MISSING{W}")
+        print(f"{B}  └── {W}{wordlist}")
+        return
+
+    # ---------------- DETECTION ----------------
+
     mode = getattr(args, "mode", None)
+
     auto_detected = False
+
+    matches = []
+
     if not mode:
-        mode = detect_mode(hashfile)
+
+        matches = detect_hashes(hashfile)
+
         auto_detected = True
-        if not mode:
-            print(f"\n{R}[!] {W}{BOLD}DETECTION FAILED{W}\n{B}  └── {W}Use --mode manually")
+
+        if not matches:
+            print(f"\n{R}[!] {W}{BOLD}DETECTION FAILED{W}")
+            print(f"{B}  └── {W}Use --mode manually")
             return
+
+    else:
+        matches = [{
+            "name": "Manual",
+            "mode": str(mode),
+            "confidence": 100
+        }]
 
     output_path = getattr(args, "out", None) or "cracked.txt"
     output_file = Path(output_path).expanduser().resolve()
 
-    # ---------------- MODULE HUD (THE BOX) ----------------
+    # ---------------- HUD ----------------
+
     inner_w = 54
-    print(f"\n{B}┌── {BOLD}MODULE: HASH RECOVERY{W}{B} {'─' * (inner_w - 20)}┐{W}")
-    
-    # Row 1: Target File
-    print(f"{B}│{W}  {B}Hashfile:{W} {W}{hashfile.name:<{inner_w - 11}}{W} {B}│{W}")
-    
-    # Row 2: Mode Info
-    mode_str = f"{mode} (Auto-Detected)" if auto_detected else f"{mode} (Manual)"
-    print(f"{B}│{W}  {B}Mode:{W}     {Y}{mode_str:<{inner_w - 11}}{W} {B}│{W}")
-    
-    # Row 3: Wordlist
-    print(f"{B}│{W}  {B}Wordlist:{W} {W}{wordlist.name:<{inner_w - 11}}{W} {B}│{W}")
-    
+
+    print(f"\n{B}┌── {BOLD}MODULE: HASH RECOVERY{W}{B} {'─' * (inner_w - 23)}┐{W}")
+
+    print(
+        f"{B}│{W}  {B}Hashfile:{W} "
+        f"{W}{hashfile.name:<{inner_w - 11}}{W} {B}│{W}"
+    )
+
+    if auto_detected:
+        detected_str = matches[0]["name"]
+        detected_mode = matches[0]["mode"]
+
+        mode_str = (
+            f"{detected_mode} "
+            f"({detected_str} / Auto)"
+        )
+    else:
+        mode_str = f"{mode} (Manual)"
+
+    print(
+        f"{B}│{W}  {B}Mode:{W}     "
+        f"{Y}{mode_str:<{inner_w - 11}}{W} {B}│{W}"
+    )
+
+    print(
+        f"{B}│{W}  {B}Wordlist:{W} "
+        f"{W}{wordlist.name:<{inner_w - 11}}{W} {B}│{W}"
+    )
+
     print(f"{B}└{'─' * (inner_w + 2)}┘{W}")
 
-    # ---------------- EXECUTION ----------------
-    cmd = f"hashcat -m {mode} {hashfile} {wordlist} --quiet"
-    print(f"\n{B}[{W}{G}*{W}{B}]{W} {B}Executing:{W} {Y}{cmd}{W}\n")
+    # ---------------- CANDIDATES ----------------
 
-    # Run Hashcat
-    subprocess.run(cmd, shell=True)
+    if auto_detected and len(matches) > 1:
 
-    # Show Results
-    show_cmd = f"hashcat -m {mode} {hashfile} --show"
-    result = subprocess.run(show_cmd, shell=True, capture_output=True, text=True)
-    lines = [l for l in result.stdout.splitlines() if l.strip()]
+        print(f"\n{B}[{W}{G}*{W}{B}]{W} {B}Candidate Modes:{W}")
 
-    # ---------------- THE LOOT BOX ----------------
-    if lines:
-        output_file.write_text("\n".join(lines))
-        
-        print(f"{G}┌── CRACKED RESULTS ───────────────────────────────────────┐{W}")
-        for line in lines:
-            # Format: hash:password -> password is the highlight
-            if ":" in line:
-                h, p = line.split(":", 1)
-                print(f"{G}│{W}  {B}PASS:{W} {G}{BOLD}{p:<44}{W} {G}│{W}")
-            else:
-                print(f"{G}│{W}  {W}{line:<50}{W} {G}│{W}")
-        print(f"{G}└──────────────────────────────────────────────────────────┘{W}")
-        print(f"{B}  └── {B}Artifact:{W} {Y}{output_file}{W}\n")
-    else:
-        print(f"{Y}[!] {W}No hashes recovered during this session.\n")
+        for h in matches:
+            print(
+                f"  {B}├──{W} "
+                f"{Y}{h['mode']}{W} "
+                f"({h['name']} / {h['confidence']}%)"
+            )
+
+    # ---------------- CRACK LOOP ----------------
+
+    for h in matches:
+
+        current_mode = h["mode"]
+        current_name = h["name"]
+
+        cmd = [
+            "hashcat",
+            "-m",
+            str(current_mode),
+            str(hashfile),
+            str(wordlist),
+            "--quiet"
+        ]
+
+        if quiet:
+            cmd.append("--quiet")
+
+        display_cmd = " ".join(cmd)
+
+        print(
+            f"\n{B}[{W}{G}*{W}{B}]{W} "
+            f"{B}Trying:{W} "
+            f"{Y}{current_name}{W} "
+            f"({current_mode})"
+        )
+
+        print(
+            f"{B}  └── {B}Command:{W} "
+            f"{DIM}{display_cmd}{W}"
+        )
+
+        # ---------------- EXECUTION ----------------
+
+        subprocess.run(cmd)
+
+        # ---------------- SHOW ----------------
+
+        show_cmd = [
+            "hashcat",
+            "-m",
+            str(current_mode),
+            str(hashfile),
+            "--show"
+        ]
+
+        result = subprocess.run(
+            show_cmd,
+            capture_output=True,
+            text=True
+        )
+
+        lines = [
+            l for l in result.stdout.splitlines()
+            if l.strip()
+        ]
+
+        # ---------------- SUCCESS ----------------
+
+        if lines:
+
+            output_file.write_text("\n".join(lines))
+
+            print(f"\n{G}┌── CRACKED RESULTS ───────────────────────────────────────┐{W}")
+
+            for line in lines:
+
+                if ":" in line:
+                    hsh, passwd = line.split(":", 1)
+
+                    print(
+                        f"{G}│{W}  "
+                        f"{B}PASS:{W} "
+                        f"{G}{BOLD}{passwd:<49}{W} "
+                        f"{G}│{W}"
+                    )
+
+                else:
+                    print(
+                        f"{G}│{W}  "
+                        f"{W}{line:<50}{W} "
+                        f"{G}│{W}"
+                    )
+
+            print(f"{G}└──────────────────────────────────────────────────────────┘{W}")
+
+            print(
+                f"{B}  └── {B}Artifact:{W} "
+                f"{Y}{output_file}{W}\n"
+            )
+
+            return
+
+    # ---------------- FAILURE ----------------
+
+    print(f"\n{Y}[!] {W}No hashes recovered during this session.\n")

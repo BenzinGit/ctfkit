@@ -39,7 +39,7 @@ def run(args):
     
     if not hashes.exists() or hashes.stat().st_size == 0:
         print(f"    {B}╰─{W} Requesting tickets for {C}{data.get('domain')}{W}...", end="\r")
-        run_module_by_name("ad.kerberoast", ["--out", str(hashes), "--quiet"], data)
+        run_module_by_name("ad.kerb.roast", ["--out", str(hashes), "--quiet"], data)
         
         if not ensure_nonempty_file(hashes, "No hashes captured."):
             return

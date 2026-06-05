@@ -37,19 +37,19 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}nmap -F {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}nmap -F {M}<HOSTNAME>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}nmap -F {M}<SUBNET>{W}"
         )
 
         print(
@@ -73,15 +73,13 @@ def run(data, cred, args):
 
         return
 
-    target_name = data.get("name")
-
-    if not target_name:
-
-        target_name = "unknown"
-
     # -----------------------------
     # ARTIFACTS
     # -----------------------------
+
+
+    target_name = data.get("name")
+
 
     nmap_dir = (
         get_artifacts_dir(target_name)
@@ -95,7 +93,7 @@ def run(data, cred, args):
 
     output_file = (
         nmap_dir /
-        "scan.txt"
+        "fast.txt"
     )
 
     # -----------------------------
@@ -103,7 +101,7 @@ def run(data, cred, args):
     # -----------------------------
 
     cmd = (
-        f"nmap -sC -sV {ip}"
+        f"nmap -F {ip}"
     )
 
     # -----------------------------
@@ -111,7 +109,7 @@ def run(data, cred, args):
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
+        f"\n{B}┌── MODULE: NMAP FAST "
         f"──────────────────────────┐{W}"
     )
 
@@ -125,7 +123,7 @@ def run(data, cred, args):
     print(
         f"{B}│{W} "
         f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
+        f"{C}{'fast.txt':<38}{W}"
         f"{B}│{W}"
     )
 

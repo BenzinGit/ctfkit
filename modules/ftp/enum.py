@@ -24,7 +24,7 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # REFERENCE MODE
+    # REFERENCE
     # -----------------------------
 
     if reference:
@@ -37,19 +37,25 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<IP>{W}"
+            f"{Y}nmap -sV -sC -A -p 21 {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV {M}<HOSTNAME>{W}"
+            f"{Y}nmap -p 21 --script ftp-anon {M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}nmap -sC -sV -p {M}<PORT>{W} {M}<IP>{W}"
+            f"{Y}nmap -p 21 --script ftp* {M}<IP>{W}"
+        )
+
+        print()
+
+        print(
+            f"{Y}nc {M}<IP>{W} 21"
         )
 
         print(
@@ -67,8 +73,7 @@ def run(data, cred, args):
     if not ip:
 
         print(
-            f"\n{R}[!]{W} "
-            f"No target IP loaded."
+            f"\n{R}[!]{W} No target IP loaded."
         )
 
         return
@@ -83,19 +88,19 @@ def run(data, cred, args):
     # ARTIFACTS
     # -----------------------------
 
-    nmap_dir = (
+    ftp_dir = (
         get_artifacts_dir(target_name)
-        / "nmap"
+        / "ftp"
     )
 
-    nmap_dir.mkdir(
+    ftp_dir.mkdir(
         parents=True,
         exist_ok=True
     )
 
     output_file = (
-        nmap_dir /
-        "scan.txt"
+        ftp_dir /
+        "enum.txt"
     )
 
     # -----------------------------
@@ -103,7 +108,12 @@ def run(data, cred, args):
     # -----------------------------
 
     cmd = (
-        f"nmap -sC -sV {ip}"
+        f"nmap "
+        f"-sV "
+        f"-sC "
+        f"-A "
+        f"-p 21 "
+        f"{ip}"
     )
 
     # -----------------------------
@@ -111,8 +121,8 @@ def run(data, cred, args):
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: NMAP SCAN "
-        f"──────────────────────────┐{W}"
+        f"\n{B}┌── MODULE: FTP ENUMERATION "
+        f"────────────────────┐{W}"
     )
 
     print(
@@ -124,8 +134,8 @@ def run(data, cred, args):
 
     print(
         f"{B}│{W} "
-        f"OUTPUT: "
-        f"{C}{'scan.txt':<38}{W}"
+        f"PORT:   "
+        f"{C}{'21':<38}{W}"
         f"{B}│{W}"
     )
 
@@ -134,7 +144,7 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # COMMAND DISPLAY
+    # COMMAND
     # -----------------------------
 
     print(
@@ -160,6 +170,13 @@ def run(data, cred, args):
         result.stdout
     )
 
+    banner = subprocess.run(
+        f"nc {ip} 21",
+        shell=True,
+        capture_output=True,
+        text=True
+    )
+
     # -----------------------------
     # RESULTS
     # -----------------------------
@@ -179,7 +196,7 @@ def run(data, cred, args):
         return
 
     print(
-        f"{G}[+]{W} Scan completed."
+        f"{G}[+]{W} Enumeration completed."
     )
 
     print(
@@ -191,4 +208,7 @@ def run(data, cred, args):
 
     print(
         result.stdout
+        
     )
+    print()
+    print(banner)

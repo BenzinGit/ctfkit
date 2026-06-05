@@ -1,4 +1,5 @@
 def run(data, cred, args):
+    
     import subprocess
     import os
     from core.target import load_current_profile
@@ -6,6 +7,7 @@ def run(data, cred, args):
     # --- ANSI PALETTE ---
     G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
     BOLD = '\033[1m'
+    print(f"{Y}[!] Module is outdated. Use smb.shares instead.")
 
     ip = data.get("ip")
     domain = data.get("domain")
