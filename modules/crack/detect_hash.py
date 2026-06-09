@@ -1,44 +1,22 @@
 import re
 from pathlib import Path
+from modules.crack.hashdb import HASH_TYPES
 
 
-HASH_TYPES = [
-    {
-        "name": "ASREP",
-        "mode": "18200",
-        "confidence": 100,
-        "match": lambda s: "$krb5asrep$" in s,
-    },
-    {
-        "name": "Kerberoast",
-        "mode": "13100",
-        "confidence": 100,
-        "match": lambda s: "$krb5tgs$" in s,
-    },
-    {
-        "name": "NetNTLMv2",
-        "mode": "5600",
-        "confidence": 95,
-        "match": lambda s: "::" in s,
-    },
-    {
-        "name": "NTLM",
-        "mode": "1000",
-        "confidence": 60,
-        "match": lambda s: re.fullmatch(r"[a-fA-F0-9]{32}", s),
-    },
-    {
-        "name": "MD5",
-        "mode": "0",
-        "confidence": 40,
-        "match": lambda s: re.fullmatch(r"[a-fA-F0-9]{32}", s),
-    },
-]
-
+# =========================================================
+# DETECTION
+# =========================================================
 
 def detect_hashes(path):
+    """
+    Return all matching hash candidates.
+    """
+
     try:
-        lines = Path(path).read_text(errors="ignore").splitlines()
+
+        lines = Path(path).read_text(
+            errors="ignore"
+        ).splitlines()
 
         if not lines:
             return []
@@ -51,18 +29,28 @@ def detect_hashes(path):
     matches = []
 
     for h in HASH_TYPES:
+
         try:
+
             if h["match"](sample):
                 matches.append(h)
+
         except Exception:
             pass
 
-    matches.sort(key=lambda x: x["confidence"], reverse=True)
+    matches.sort(
+        key=lambda x: x["confidence"],
+        reverse=True
+    )
 
     return matches
 
 
 def detect_mode(path):
+    """
+    Return best matching mode.
+    """
+
     matches = detect_hashes(path)
 
     if not matches:
@@ -71,38 +59,98 @@ def detect_mode(path):
     return matches[0]["mode"]
 
 
+# =========================================================
+# MODE HELPERS
+# =========================================================
+
+def resolve_mode(value):
+    """
+    Accept:
+        NTLM
+        nthash
+        Kerberoast
+        1000
+        13100
+
+    Return:
+        Hashcat mode number
+    """
+
+    if value is None:
+        return None
+
+    value = str(value).strip()
+
+    if value.isdigit():
+        return value
+
+    value_upper = value.upper()
+
+    for h in HASH_TYPES:
+
+        if value_upper == h["name"].upper():
+            return h["mode"]
+
+        for alias in h.get("aliases", []):
+
+            if value_upper == alias.upper():
+                return h["mode"]
+
+    return None
+
+
+def mode_name(mode):
+    """
+    Convert:
+        1000 -> NTLM
+        13100 -> Kerberoast
+    """
+
+    mode = str(mode)
+
+    for h in HASH_TYPES:
+
+        if h["mode"] == mode:
+            return h["name"]
+
+    return "Unknown"
+
+
+def list_modes():
+    """
+    Return all supported modes.
+    """
+
+    return sorted(
+        [
+            {
+                "name": h["name"],
+                "mode": h["mode"],
+            }
+            for h in HASH_TYPES
+        ],
+        key=lambda x: x["name"]
+    )
+
+
+# =========================================================
+# CLI MODULE
+# =========================================================
+
 def run(data, cred, args):
-    from pathlib import Path
 
-    file = getattr(args, "file", None)
+    G = "\033[92m"
+    B = "\033[94m"
+    W = "\033[0m"
 
-    # positional fallback
-    if not file and hasattr(args, "extra") and args.extra:
-        file = args.extra[0]
+    print(f"\n{G}[+] Supported Hash Modes{W}\n")
 
-    if not file:
-        print("[!] Missing --file")
-        return
+    for h in list_modes():
 
-    path = Path(file).expanduser().resolve()
-
-    if not path.exists():
-        print(f"[!] File not found: {path}")
-        return
-
-    matches = detect_hashes(path)
-
-    if not matches:
-        print("[!] Could not detect hash type")
-        return
-
-    print("\n[+] Candidate Hash Types:\n")
-
-    for h in matches:
         print(
-            f"  - {h['name']:<15} "
-            f"Mode: {h['mode']:<8} "
-            f"Confidence: {h['confidence']}%"
+            f"  {B}├──{W} "
+            f"{h['name']:<15} "
+            f"{h['mode']}"
         )
 
     print()

@@ -25,3 +25,16 @@ def get_tools_dir():
 def get_tool_path(filename):
     return get_tools_dir() / filename
 
+def get_windows_tools_dir():
+
+    path = (
+        get_tools_dir()
+        / "windows"
+    )
+
+    path.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    return path

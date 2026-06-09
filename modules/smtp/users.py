@@ -1,5 +1,4 @@
 import subprocess
-from pathlib import Path
 
 
 PROVIDES = []
@@ -19,6 +18,12 @@ def run(data, cred, args):
     reference = getattr(
         args,
         "reference",
+        False
+    )
+
+    menu = getattr(
+        args,
+        "menu",
         False
     )
 
@@ -87,44 +92,52 @@ def run(data, cred, args):
 
         return
 
-    target_name = data.get(
-        "name",
-        "unknown"
-    )
-
     # -----------------------------
-    # ARTIFACTS
+    # MENU
     # -----------------------------
 
-    smtp_dir = (
-        Path("artifacts")
-        / target_name
-        / "smtp"
-    )
+    mode = "enum"
 
-    smtp_dir.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    if menu:
+
+        print()
+
+        print(
+            "[1] smtp-user-enum"
+        )
+
+        print(
+            "[2] Manual VRFY"
+        )
+
+        print()
+
+        choice = input(
+            "> "
+        ).strip()
+
+        if choice == "2":
+
+            mode = "vrfy"
 
     # -----------------------------
     # WORDLIST
     # -----------------------------
 
-    default_wordlist = (
+    wordlist = (
         "/usr/share/seclists/"
         "Usernames/"
         "Names/"
         "names.txt"
     )
 
-    wordlist = input(
-        f"\nWordlist [{default_wordlist}]: "
+    custom = input(
+        f"\nWordlist [{wordlist}]: "
     ).strip()
 
-    if not wordlist:
+    if custom:
 
-        wordlist = default_wordlist
+        wordlist = custom
 
     # -----------------------------
     # HEADER
@@ -154,7 +167,45 @@ def run(data, cred, args):
     )
 
     # -----------------------------
-    # COMMAND
+    # MANUAL VRFY
+    # -----------------------------
+
+    if mode == "vrfy":
+
+        print(
+            f"\n{B}[{W}{G}*{W}{B}]{W} "
+            f"COMMON USERS\n"
+        )
+
+        users = [
+
+            "root",
+            "admin",
+            "administrator",
+            "postmaster",
+            "backup",
+            "svc_backup"
+
+        ]
+
+        for user in users:
+
+            print(
+                f"{Y}VRFY {user}{W}"
+            )
+
+        print()
+
+        print(
+            f"{Y}nc {ip} 25{W}"
+        )
+
+        print()
+
+        return
+
+    # -----------------------------
+    # ENUMERATION
     # -----------------------------
 
     cmd = (
@@ -173,135 +224,9 @@ def run(data, cred, args):
         f"{Y}{cmd}{W}\n"
     )
 
-    # -----------------------------
-    # EXECUTE
-    # -----------------------------
-
-    result = subprocess.run(
+    subprocess.run(
         cmd,
-        shell=True,
-        capture_output=True,
-        text=True
-    )
-
-    print(
-        result.stdout
-    )
-
-    # -----------------------------
-    # SAVE RAW OUTPUT
-    # -----------------------------
-
-    raw_file = (
-        smtp_dir
-        / "smtp-user-enum.txt"
-    )
-
-    raw_file.write_text(
-        result.stdout
-    )
-
-    # -----------------------------
-    # PARSE USERS
-    # -----------------------------
-
-    users = []
-
-    for line in result.stdout.splitlines():
-
-        if " exists" not in line:
-
-            continue
-
-        try:
-
-            username = (
-                line.split(":")[1]
-                .replace(
-                    " exists",
-                    ""
-                )
-                .strip()
-            )
-
-            users.append(
-                username
-            )
-
-        except:
-
-            pass
-
-    users = sorted(
-        set(users)
-    )
-
-    # -----------------------------
-    # SAVE USERS
-    # -----------------------------
-
-    user_file = (
-        smtp_dir
-        / "users.txt"
-    )
-
-    user_file.write_text(
-        "\n".join(users)
-    )
-
-    # -----------------------------
-    # RESULTS
-    # -----------------------------
-
-    print(
-        f"\n{B}[{W}{G}*{W}{B}]{W} "
-        f"RESULTS\n"
-    )
-
-    if users:
-
-        for user in users:
-
-            print(
-                f"{C}{user}{W}"
-            )
-
-        print()
-
-        print(
-            f"{G}[+]{W} "
-            f"Found "
-            f"{C}{len(users)}{W} "
-            f"valid users."
-        )
-
-    else:
-
-        print(
-            f"{R}[!]{W} "
-            f"No valid users found."
-        )
-
-    print()
-
-    print(
-        f"{G}[+]{W} "
-        f"Raw Output:"
-    )
-
-    print(
-        f"{C}{raw_file}{W}"
-    )
-
-    print()
-
-    print(
-        f"{G}[+]{W} "
-        f"Users:"
-    )
-
-    print(
-        f"{C}{user_file}{W}"
+        shell=True
     )
 
     print()

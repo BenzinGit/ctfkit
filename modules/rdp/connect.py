@@ -1,6 +1,10 @@
 import os
 import subprocess
 
+from core.paths import (
+    get_windows_tools_dir
+)
+
 
 PROVIDES = []
 REQUIRES = ["ip"]
@@ -36,34 +40,29 @@ def run(data, cred, args):
         print()
 
         print(
-            f"{Y}impacket-mssqlclient "
-            f"{M}<USER>{W}:{M}<PASS>{W}@{M}<IP>{W}"
+            f"{Y}xfreerdp3 "
+            f"/u:{M}<USER>{W} "
+            f"/p:{M}<PASS>{W} "
+            f"/v:{M}<IP>{W} "
+            f"+clipboard "
+            f"/dynamic-resolution "
+            f"/cert:ignore "
+            f"/drive:shared,{M}<DIR>{W}"
         )
 
         print()
 
         print(
-            f"{Y}impacket-mssqlclient "
-            f"{M}<DOMAIN>{W}/{M}<USER>{W}:{M}<PASS>{W}@{M}<IP>{W} "
-            f"-windows-auth"
+            f"{Y}xfreerdp3 "
+            f"/u:{M}<USER>{W} "
+            f"/pth:{M}<NTLM>{W} "
+            f"/v:{M}<IP>{W}"
         )
 
         print()
 
         print(
-            f"{Y}impacket-mssqlclient "
-            f"{M}<DOMAIN>{W}/{M}<USER>{W}@{M}<IP>{W} "
-            f"-hashes :{M}<NTHASH>{W} "
-            f"-windows-auth"
-        )
-
-        print()
-
-        print(
-            f"{Y}KRB5CCNAME={M}<CCACHE>{W} "
-            f"impacket-mssqlclient "
-            f"{M}<DOMAIN>{W}/{M}<USER>{W}@{M}<IP>{W} "
-            f"-k -no-pass"
+            f"{Y}\\\\tsclient\\shared{W}"
         )
 
         print(
@@ -90,6 +89,14 @@ def run(data, cred, args):
         return
 
     # -----------------------------
+    # WINDOWS SHARE
+    # -----------------------------
+
+    share_dir = (
+        get_windows_tools_dir()
+    )
+
+    # -----------------------------
     # CREDS
     # -----------------------------
 
@@ -112,11 +119,6 @@ def run(data, cred, args):
             f"No credential selected."
         )
 
-        print(
-            f"{Y}ctf useradd "
-            f"<user> <password>{W}\n"
-        )
-
         return
 
     current = creds[
@@ -131,10 +133,6 @@ def run(data, cred, args):
         "type"
     )
 
-    domain = data.get(
-        "domain"
-    )
-
     auth_label = (
         f"{user} ({cred_type})"
     )
@@ -145,33 +143,20 @@ def run(data, cred, args):
 
     if cred_type == "password":
 
-        password = current.get(
+        secret = current.get(
             "secret"
         )
 
-        if not password:
-
-            print(
-                f"\n{R}[!]{W} "
-                f"Invalid credential."
-            )
-
-            return
-
-        if domain:
-
-            cmd = (
-                f"impacket-mssqlclient "
-                f"'{domain}/{user}:{password}@{ip}' "
-                f"-windows-auth"
-            )
-
-        else:
-
-            cmd = (
-                f"impacket-mssqlclient "
-                f"'{user}:{password}@{ip}'"
-            )
+        cmd = (
+            f"xfreerdp3 "
+            f"/v:{ip} "
+            f"/u:'{user}' "
+            f"/p:'{secret}' "
+            f"+clipboard "
+            f"/dynamic-resolution "
+            f"/cert:ignore "
+            f"/drive:shared,{share_dir}"
+        )
 
     # -----------------------------
     # NTLM
@@ -179,46 +164,19 @@ def run(data, cred, args):
 
     elif cred_type == "ntlm":
 
-        ntlm = current.get(
+        secret = current.get(
             "secret"
         )
 
-        if not ntlm:
-
-            print(
-                f"\n{R}[!]{W} "
-                f"Invalid NTLM hash."
-            )
-
-            return
-
-        if ":" in ntlm:
-
-            nthash = (
-                ntlm.split(":")[-1]
-            )
-
-        else:
-
-            nthash = ntlm
-
-        if domain:
-
-            target = (
-                f"{domain}/{user}@{ip}"
-            )
-
-        else:
-
-            target = (
-                f"{user}@{ip}"
-            )
-
         cmd = (
-            f"impacket-mssqlclient "
-            f"'{target}' "
-            f"-hashes :{nthash} "
-            f"-windows-auth"
+            f"xfreerdp3 "
+            f"/v:{ip} "
+            f"/u:'{user}' "
+            f"/pth:{secret} "
+            f"+clipboard "
+            f"/dynamic-resolution "
+            f"/cert:ignore "
+            f"/drive:shared,{share_dir}"
         )
 
     # -----------------------------
@@ -235,7 +193,7 @@ def run(data, cred, args):
 
             print(
                 f"\n{R}[!]{W} "
-                f"No ccache found."
+                f"No ccache file."
             )
 
             return
@@ -244,28 +202,15 @@ def run(data, cred, args):
             "KRB5CCNAME"
         ] = ccache
 
-        if domain:
-
-            target = (
-                f"{domain}/{user}@{ip}"
-            )
-
-        else:
-
-            target = (
-                f"{user}@{ip}"
-            )
-
         cmd = (
-            f"impacket-mssqlclient "
-            f"'{target}' "
-            f"-k "
-            f"-no-pass"
+            f"xfreerdp3 "
+            f"/v:{ip} "
+            f"/u:'{user}' "
+            f"+clipboard "
+            f"/dynamic-resolution "
+            f"/cert:ignore "
+            f"/drive:shared,{share_dir}"
         )
-
-    # -----------------------------
-    # UNSUPPORTED
-    # -----------------------------
 
     else:
 
@@ -282,8 +227,8 @@ def run(data, cred, args):
     # -----------------------------
 
     print(
-        f"\n{B}┌── MODULE: MSSQL CONNECT "
-        f"──────────────────────┐{W}"
+        f"\n{B}┌── MODULE: RDP CONNECT "
+        f"────────────────────────┐{W}"
     )
 
     print(
@@ -304,68 +249,20 @@ def run(data, cred, args):
         f"{B}└───────────────────────────────────────────────┘{W}"
     )
 
-
     print(
         f"\n{B}[{W}{G}*{W}{B}]{W} "
-        f"COMMON QUERIES\n"
+        f"SHARED DRIVE\n"
     )
 
     print(
-        f"{Y}SELECT name "
-        f"FROM sys.databases;{W}"
+        f"{C}{share_dir}{W}"
     )
 
     print()
 
     print(
-        f"{Y}USE <database>;{W}"
+        f"{C}\\\\tsclient\\shared{W}"
     )
-
-    print()
-
-    print(
-        f"{Y}SELECT TABLE_NAME "
-        f"FROM INFORMATION_SCHEMA.TABLES;{W}"
-    )
-
-    print()
-
-    print(
-        f"{Y}SELECT TOP 50 * "
-        f"FROM <table>;{W}"
-    )
-
-    print()
-
-    print(
-        f"{Y}EXEC xp_cmdshell 'whoami';{W}"
-    )
-
-    print()
-
-    print(
-        f"{Y}enable_xp_cmdshell{W}"
-    )
-
-    print()
-
-    print(
-        f"{Y}enum_db{W}"
-    )
-
-    print()
-
-    print(
-        f"{Y}enum_links{W}"
-    )
-
-    print()
-
-    print(
-        f"{Y}help{W}"
-    )
-
-    print()
 
     print(
         f"\n{B}[{W}{G}*{W}{B}]{W} "
@@ -375,10 +272,6 @@ def run(data, cred, args):
     print(
         f"{Y}{cmd}{W}\n"
     )
-
-    # -----------------------------
-    # CONNECT
-    # -----------------------------
 
     try:
 

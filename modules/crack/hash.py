@@ -1,5 +1,9 @@
-from modules.crack.detect_hash import detect_mode
-from modules.crack.detect_hash import detect_hashes
+from modules.crack.detect_hash import (
+    detect_hashes,
+    resolve_mode,
+    mode_name,
+)
+
 
 
 def run(data, cred, args):
@@ -41,6 +45,16 @@ def run(data, cred, args):
     quiet = getattr(args, "quiet", False)
 
     hashfile = resolve_hash_input()
+    
+    try:
+        sample = hashfile.read_text(
+            errors="ignore"
+        ).splitlines()[0].strip()
+    except Exception:
+        sample = ""
+
+
+
 
     if not hashfile:
         return
@@ -62,6 +76,18 @@ def run(data, cred, args):
     # ---------------- DETECTION ----------------
 
     mode = getattr(args, "mode", None)
+
+    if mode:
+
+        resolved = resolve_mode(mode)
+
+        if not resolved:
+
+            print(f"\n{R}[!] {W}{BOLD}UNKNOWN MODE{W}")
+            print(f"{B}  └── {W}{mode}")
+            return
+
+        mode = resolved
 
     auto_detected = False
 
@@ -92,7 +118,20 @@ def run(data, cred, args):
 
     inner_w = 54
 
+
     print(f"\n{B}┌── {BOLD}MODULE: HASH RECOVERY{W}{B} {'─' * (inner_w - 23)}┐{W}")
+
+
+    preview = (
+        sample[:45] + "..."
+        if len(sample) > 45
+        else sample
+    )
+
+    print(
+        f"{B}│{W}  {B}Preview:{W}  "
+        f"{DIM}{preview:<{inner_w - 11}}{W} {B}│{W}"
+    )
 
     print(
         f"{B}│{W}  {B}Hashfile:{W} "
@@ -108,8 +147,10 @@ def run(data, cred, args):
             f"({detected_str} / Auto)"
         )
     else:
-        mode_str = f"{mode} (Manual)"
-
+        mode_str = (
+        f"{mode} "
+        f"({mode_name(mode)} / Manual)"
+    )
     print(
         f"{B}│{W}  {B}Mode:{W}     "
         f"{Y}{mode_str:<{inner_w - 11}}{W} {B}│{W}"
@@ -129,12 +170,16 @@ def run(data, cred, args):
         print(f"\n{B}[{W}{G}*{W}{B}]{W} {B}Candidate Modes:{W}")
 
         for h in matches:
+
+            category = h.get("category", "Unknown")
+
             print(
                 f"  {B}├──{W} "
-                f"{Y}{h['mode']}{W} "
-                f"({h['name']} / {h['confidence']}%)"
+                f"{Y}{h['name']:<12}{W} "
+                f"Mode {h['mode']:<6} "
+                f"{C}{category:<10}{W} "
+                f"{h['confidence']}%"
             )
-
     # ---------------- CRACK LOOP ----------------
 
     for h in matches:

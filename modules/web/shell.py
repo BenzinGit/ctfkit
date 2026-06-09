@@ -419,7 +419,7 @@ def run(data, cred, args):
             if method == "POST":
 
                 curl_cmd = (
-                    f'curl -s -X POST '
+                    f'curl -s -k -X POST '
                     f'-d "{param}={full_command}" '
                     f'"{url}"'
                 )
@@ -447,7 +447,8 @@ def run(data, cred, args):
                 response = requests.get(
                     url,
                     params={param: full_command},
-                    timeout=10
+                    timeout=10, 
+                    verify=False
                 )
 
             output = clean_output(response.text)
