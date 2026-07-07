@@ -88,6 +88,8 @@ def run(data, cred, args):
         / "nmap"
     )
 
+    
+
     nmap_dir.mkdir(
         parents=True,
         exist_ok=True

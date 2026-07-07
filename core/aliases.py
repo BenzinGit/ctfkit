@@ -8,11 +8,12 @@ ALIASES = {
             "show": ["show", "info", "target-info", "host-info"],
             "creds": ["creds","credentials", "c", "users", "accounts", "list-creds", "list-users", "ls-creds", "ls-users"],
             "set-cred": ["set-cred", "set-user", "use-cred", "use.user", "select-cred", "select-user", "switch-cred", "switch-user", "su"],
-            "add-cred": ["add-cred", "add-user","new-cred","new-user","create-cred","create-user","useradd"],
+            "add-cred": ["add-cred", "add-user","new-cred","new-user","create-cred","create-user","useradd", "user-add"],
             "add-domain": ["add-domain", "ad", "new-domain", "create-domain"],
-            "delete": ["delete", "remove"],
+            "delete": ["delete", "remove", "rm"],
             "set-url": ["set-url", "switch-url", "use-url", "seturl", "switchurl", "newurl" "surl"],
-            "add-url":["add-url", "new-url", "addurl", "aurl"]
+            "add-url":["add-url", "new-url", "addurl", "aurl"],
+            "add-proxy": ["add-proxy", "set-proxy", "proxy", "new-proxy"]
 
 
         }
@@ -67,7 +68,7 @@ ALIASES = {
     },
      
     "upload": {
-        "aliases": ["upload", "drop"],
+        "aliases": ["upload", "drop", "put"],
         "actions": {
             "windows": ["windows", "win", "w"],
             "linux": ["linux", "lin", "l"]
@@ -77,7 +78,7 @@ ALIASES = {
     },
 
     "download": {
-        "aliases": ["download", "grab"],
+        "aliases": ["download", "grab", "get"],
         "actions": {
             "windows": ["windows", "win", "w"],
             "linux": ["linux", "lin", "l"]

@@ -281,6 +281,11 @@ def main():
     play_parser.add_argument("name")
     play_parser.set_defaults(func=run_playbook)
 
+    addproxy = target_sub.add_parser("add-proxy")
+    addproxy.add_argument("proxy")
+    addproxy.set_defaults(func=target.target_add_proxy)
+
+
     addurl = target_sub.add_parser("add-url")
     addurl.add_argument("url")
     addurl.set_defaults(func=target.target_add_url)
@@ -314,7 +319,14 @@ def main():
     run_parser.add_argument("--remote")
     run_parser.add_argument("--host")
     run_parser.add_argument("--cookie")
+    run_parser.add_argument(
+        "--wordlist",
+        help="Custom wordlist"
+    )
+    run_parser.add_argument("--url", action="store_true")
+    run_parser.add_argument("--base64", "-64", action="store_true")
 
+    run_parser.add_argument("--windows","-w", action="store_true")
     run_parser.add_argument("--generate", action="store_true")
     run_parser.add_argument("--deploy", action="store_true")
     run_parser.add_argument("--name", action="store_true")

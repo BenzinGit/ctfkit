@@ -29,6 +29,21 @@ RULES = {
         "type": "gtfobins",
         "payload": "awk 'BEGIN {system(\"/bin/sh\")}'"
     },
+    "doas": {
+    "type": "interesting",
+    "payload": (
+        "Inspect /usr/local/etc/doas.conf for commands "
+        "that can be executed as root."
+    ),
+    "dstat": {
+    "type": "plugin_abuse",
+    "payload": (
+        "Check writable dstat plugin directories. "
+        "If running via sudo/doas, create a malicious "
+        "dstat_<name>.py plugin and load it."
+    )
+}
+}
 }
 
 # Known noise

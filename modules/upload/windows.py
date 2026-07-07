@@ -5,6 +5,7 @@ import socket
 import socketserver
 import threading
 from pathlib import Path
+from core.attacker import resolve_lhost
 
 # =========================================================
 # COLORS
@@ -23,38 +24,6 @@ W_BOLD = '\033[1m'
 # HELPERS
 # =========================================================
 
-def detect_ip():
-
-    try:
-
-        import netifaces
-
-        if "tun0" in netifaces.interfaces():
-
-            iface = netifaces.ifaddresses("tun0")
-
-            if netifaces.AF_INET in iface:
-
-                return iface[netifaces.AF_INET][0]["addr"]
-
-    except Exception:
-        pass
-
-    try:
-
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        s.connect(("1.1.1.1", 80))
-
-        ip = s.getsockname()[0]
-
-        s.close()
-
-        return ip
-
-    except Exception:
-
-        return "127.0.0.1"
 
 
 def copy_clipboard(text):
@@ -317,6 +286,7 @@ def choose_mode():
 
 def stage_windows_files(
     files,
+    data=None,
     method=None,
     ip=None,
     port=8080,
@@ -341,7 +311,7 @@ def stage_windows_files(
             return
 
     if not ip:
-        ip = detect_ip()
+        ip = resolve_lhost(args=None, data=data)
 
     if not method:
         method = choose_mode()
@@ -408,6 +378,7 @@ def stage_windows_files(
 
 def stage_windows_file(
     filepath,
+    data=None,
     method=None,
     ip=None,
     port=8080,
@@ -415,12 +386,13 @@ def stage_windows_file(
 ):
 
     return stage_windows_files(
-        [filepath],
-        method,
-        ip,
-        port,
-        remote_dir,
-    )
+    [filepath],
+    data=data,
+    method=method,
+    ip=ip,
+    port=port,
+    remote_dir=remote_dir,
+)
 
 
 # =========================================================
@@ -480,6 +452,9 @@ def run(data=None, cred=None, args=None):
     # STAGE
     # =====================================================
 
-    stage_windows_files(files)
+    stage_windows_files(
+        files,
+        data=data,
+    )
 
     return data

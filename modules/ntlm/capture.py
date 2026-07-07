@@ -24,5 +24,4 @@ def run(data, creds, args):
         stderr=log_file,
         preexec_fn=os.setsid
     )
-    
     return proc

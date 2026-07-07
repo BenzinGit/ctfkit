@@ -21,6 +21,26 @@ def run(data, cred, args):
     R = '\033[91m'
     M = '\033[95m'
 
+
+    windows = getattr(
+        args,
+        "windows",
+        False
+    )
+    if windows:
+        print(
+            f"\n{B}┌── Windows "
+            f"──────────────────────────────────────┐{W}"
+        )
+        print()
+        print(f'{Y}Get-NetLocalGroupMember -ComputerName ACADEMY-EA-MS01 -GroupName "Remote Desktop Users"')
+        
+
+        print(
+            f"\n{B}└──────────────────────────────────────────────┘{W}\n"
+        )
+        return
+
     reference = getattr(
         args,
         "reference",
@@ -63,6 +83,17 @@ def run(data, cred, args):
             f"/p:{M}<PASS>{W} "
             f"/v:{M}<IP>{W}"
         )
+
+        print(
+            f"\n{B}└──────────────────────────────────────────────┘{W}\n"
+        )
+        print(
+            f"\n{B}┌── Windows "
+            f"──────────────────────────────────────┐{W}"
+        )
+        print()
+        print(f'{Y}Get-NetLocalGroupMember -ComputerName ACADEMY-EA-MS01 -GroupName "Remote Desktop Users"')
+        
 
         print(
             f"\n{B}└──────────────────────────────────────────────┘{W}\n"

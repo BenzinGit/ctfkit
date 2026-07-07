@@ -4,6 +4,15 @@ def run(data, cred, args):
     import socket
     import time
 
+
+    G = '\033[92m'
+    C = '\033[96m'
+    B = '\033[94m'
+    Y = '\033[93m'
+    R = '\033[91m'
+    W = '\033[0m'
+
+
     name = args.extra[0] if args.extra else None
     if not name:
         print("[!] Usage: ctf bloodhound.new <name>")
@@ -81,5 +90,49 @@ services:
     # Start everything - the 'depends_on' with 'service_healthy' handles the timing now
     subprocess.run(["docker", "compose", "-f", str(compose_file), "up", "-d"])
 
-    print(f"[*] Services started. It may take 30-60s for the admin password to appear in logs.")
-    print(f"[+] Web UI: http://localhost:{web_port}")
+    subprocess.Popen([
+      "firefox",
+      f"http://localhost:{web_port}"
+  ])
+
+
+    import re
+    import time
+    import subprocess
+
+    password = None
+
+    for _ in range(60):  # ~60 seconds
+
+        log_proc = subprocess.run(
+            [
+                "docker",
+                "logs",
+                f"bh_{name}_app"
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        match = re.search(
+            r"Initial Password Set To:\s+([^\s]+)",
+            log_proc.stdout
+        )
+
+        if match:
+            password = match.group(1)
+            break
+
+        time.sleep(1)
+
+    print()
+    print(f"{G}[+]{W} BloodHound Ready")
+    print(f"    URL      : http://localhost:{web_port}")
+    print(f"    Username : admin")
+
+    if password:
+        print(f"    Password : {password}")
+    else:
+        print(f"    Password : PENDING")
+
+

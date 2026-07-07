@@ -16,12 +16,17 @@ Y, R = '\033[93m', '\033[91m'
 
 # ---------------------- Helpers ----------------------
 
+def get_current_ip(data):
+    return data.get("ip")
+
 def rel(path):
     try:
         return path.relative_to(BASE_DIR)
     except ValueError:
         return path  
 
+def get_current_proxy(data):
+    return data.get("proxy")
 
 def get_profile_path(name):
     return PROFILES_DIR / f"{name}.json"
@@ -288,6 +293,7 @@ def target_show(args):
         "Hostname": data.get("hostname"),
         "IP Address": data.get("ip"),
         "Domain": data.get("domain"),
+        "Proxy": data.get("proxy"),
         "OS Version": data.get("os"),
         "Role": data.get("role"),
     }
@@ -337,6 +343,7 @@ def target_show(args):
 
 
 def target_add_cred(args, switch=True, show=True):
+    
     try:
         data, path = load_current_profile()
     except Exception as e:
@@ -476,13 +483,21 @@ def target_creds(args):
 
     print_creds_table(creds, active_idx)
 
-def print_creds_table(creds, active_idx):
+def print_creds_table(creds=None, active_idx=None):
     # --- ANSI PALETTE ---
     ORANGE = '\033[38;5;208m'  # Punchy, aggressive orange
     AMBER  = '\033[38;5;172m'  # Dark yellow / Gold
     DKBLUE = '\033[38;5;75m'   # Deep, professional navy
     GREY   = '\033[38;5;244m'  # Tactical medium grey
     DKGREY = '\033[38;5;239m'  # Very dim grey (good for borders)
+    data, _ = load_current_profile()
+
+    if creds is None:
+        creds = get_all_creds(data)
+
+    if active_idx is None:   
+        active_idx = data.get("current_cred")
+
 
     if not creds:
         print(f"\n{B}  └── {Y}[!] No credentials found.{W}")
@@ -611,6 +626,7 @@ def target_whoami(args):
     host   = data.get("hostname") or "N/A"
     ip     = data.get("ip") or "N/A"
     domain = data.get("domain") or "N/A"
+    proxy = data.get("proxy") or "N/A"
 
     # Box Width to match your Mission Brief
     width = 54
@@ -628,7 +644,12 @@ def target_whoami(args):
     print(f"{B}│{W}  {B}{'Hostname:':<14}{W} {C}{host:<36}{W} {B}│{W}")
     print(f"{B}│{W}  {B}{'IP Address:':<14}{W} {C}{ip:<36}{W} {B}│{W}")
     print(f"{B}│{W}  {B}{'Domain:':<14}{W} {B}{domain:<36}{W} {B}│{W}")
-    
+    print(
+    f"{B}│{W}  "
+    f"{B}{'Proxy:':<14}{W} "
+    f"{C}{proxy:<36}{W} "
+    f"{B}│{W}"
+)
     print(f"{B}└──────────────────────────────────────────────────────┘{W}\n")
 
 
@@ -711,3 +732,34 @@ def get_current_url(data):
         return f"http://{ip}"
 
     return None
+
+
+def target_add_proxy(args):
+
+    G, C, B, Y, W, R = '\033[92m', '\033[96m', '\033[94m', '\033[93m', '\033[0m', '\033[91m'
+
+    try:
+        data, path = load_current_profile()
+
+    except Exception:
+
+        print(f"\n{R}[!] {W}No active target selected.")
+        return
+
+    proxy = args.proxy.strip()
+
+    if not proxy:
+
+        print(f"{R}[!] Invalid proxy{W}")
+        return
+
+    data["proxy"] = proxy
+
+    save_profile(data, path)
+
+    print(f"\n{G}[+] Proxy updated{W}")
+
+    print(
+        f"{B}  └── {B}Proxy:{W} "
+        f"{C}{proxy}{W}"
+    )

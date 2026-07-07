@@ -51,7 +51,7 @@ def run(data, cred, args):
     print(f"[*] Target: {ip}")
     print(f"[*] Path: {path}")
     print(f"[*] Running xp_dirtree...\n")
-
+    print(query)
     try:
         proc = subprocess.Popen(
             cmd,

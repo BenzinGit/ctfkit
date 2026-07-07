@@ -447,7 +447,11 @@ def run(
         None
     )
 
-    share = args.share or "data"
+    share = getattr(
+        args,
+        "share",
+        "data"
+    )
 
     receive_windows_file(
         outfile=outfile,
