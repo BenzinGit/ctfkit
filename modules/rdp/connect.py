@@ -136,11 +136,12 @@ def run(data, cred, args):
     auth_label = (
         f"{user} ({cred_type})"
     )
+    domain = data.get("domain")
 
     # -----------------------------
     # PASSWORD
     # -----------------------------
-
+    
     if cred_type == "password":
 
         secret = current.get(
@@ -152,6 +153,13 @@ def run(data, cred, args):
             f"/v:{ip} "
             f"/u:'{user}' "
             f"/p:'{secret}' "
+
+        )
+
+        if domain:
+            cmd += f"/d:'{domain}' "
+
+        cmd += (
             f"+clipboard "
             f"/dynamic-resolution "
             f"/cert:ignore "

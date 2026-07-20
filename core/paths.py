@@ -25,6 +25,12 @@ def get_tools_dir():
 def get_tool_path(filename):
     return get_tools_dir() / filename
 
+def get_assets_dir():
+    return BASE_DIR / "assets"
+
+def get_images_dir():
+    return BASE_DIR / "assets" / "images"
+
 def get_windows_tools_dir():
 
     path = (
@@ -38,3 +44,7 @@ def get_windows_tools_dir():
     )
 
     return path
+
+
+def get_venvs_dir():
+    return BASE_DIR / "venvs"

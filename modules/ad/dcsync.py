@@ -68,7 +68,9 @@ args,
 
             stage_windows_files([
                 mimikatz
-            ])
+            ], 
+            data=data,
+            )
 
         print(
             f"\n{B}┌── DCSYNC ──────────────────────────┐{W}"

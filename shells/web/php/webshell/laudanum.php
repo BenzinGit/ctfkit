@@ -44,7 +44,7 @@
 // ***************** Config entries below ***********************
 
 // IPs are enterable as individual addresses TODO: add CIDR support
-$allowedIPs = array("192.168.1.55", "12.2.2.2", '{lhost}');
+$allowedIPs = array("192.168.1.55", "12.2.2.2", "10.10.14.239", '{lhost}');
 
 # format is "username" => "password" 
 # password is generated using sha1sum as shown below (don't forget the -n, KEVIN!)
