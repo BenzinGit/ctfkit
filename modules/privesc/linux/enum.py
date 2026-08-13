@@ -46,10 +46,10 @@ def run(data, cred, args):
     # Upload enumerator
     #
     enum_script = get_tools_dir() / "linux_enum.sh"
-    cred_script = get_tools_dir() / "credscan.py"
+    cred_script = get_tools_dir() / "linux_credscan.py"
     stage_linux_files([enum_script, cred_script])
 
-    helper = """chmod +x linux_enum.sh && ./linux_enum.sh && python3 credscan.py"""
+    helper = """chmod +x linux_enum.sh && ./linux_enum.sh && python3 linux_credscan.py"""
 
     pyperclip.copy(helper)
 
@@ -86,22 +86,22 @@ def run(data, cred, args):
 
 def analyze(outfile):
     
-    from modules.privesc.analyzers import suid
-    from modules.privesc.analyzers import sudo
-    from modules.privesc.analyzers import groups
-    from modules.privesc.analyzers import capabilities
-    from modules.privesc.analyzers import software
-    from modules.privesc.analyzers import cron
-    from modules.privesc.analyzers import containers
-    from modules.privesc.analyzers import nfs
-    from modules.privesc.analyzers import kernel
-    from modules.privesc.analyzers import shared_library
-    from modules.privesc.analyzers import writable_paths
-    from modules.privesc.analyzers import path
-    from modules.privesc.analyzers import processes
-    from modules.privesc.analyzers import users
-    from modules.privesc.analyzers import history
-    from modules.privesc.analyzers import network
+    from modules.privesc.linux.analyzers import suid
+    from modules.privesc.linux.analyzers import sudo
+    from modules.privesc.linux.analyzers import groups
+    from modules.privesc.linux.analyzers import capabilities
+    from modules.privesc.linux.analyzers import software
+    from modules.privesc.linux.analyzers import cron
+    from modules.privesc.linux.analyzers import containers
+    from modules.privesc.linux.analyzers import nfs
+    from modules.privesc.linux.analyzers import kernel
+    from modules.privesc.linux.analyzers import shared_library
+    from modules.privesc.linux.analyzers import writable_paths
+    from modules.privesc.linux.analyzers import path
+    from modules.privesc.linux.analyzers import processes
+    from modules.privesc.linux.analyzers import users
+    from modules.privesc.linux.analyzers import history
+    from modules.privesc.linux.analyzers import network
 
 
     #

@@ -81,6 +81,10 @@ def generate_meterpreter(
     data,
 ):
     payloads = {
+
+        "windows/x86/meterpreter/reverse_tcp":
+            "windows/meterpreter/reverse_tcp",
+
         "windows/meterpreter/reverse_tcp":
             "windows/x64/meterpreter/reverse_tcp",
 
@@ -334,8 +338,7 @@ def run(data, cred, args):
     # Meterpreter payloads
     #
 
-    if stype.startswith("windows/meterpreter"):
-
+    if "/meterpreter/" in stype:
         result = generate_meterpreter(
             stype,
             lhost,
