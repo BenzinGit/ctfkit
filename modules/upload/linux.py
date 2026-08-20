@@ -9,6 +9,13 @@ import threading
 
 from pathlib import Path
 
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich import box
+
+console = Console()
+
 
 # =========================================================
 # COLORS
@@ -27,6 +34,85 @@ W_BOLD = '\033[1m'
 # =========================================================
 # HELPERS
 # =========================================================
+
+def _human_size(num_bytes):
+
+    size = float(num_bytes)
+
+    for unit in ("B", "KB", "MB", "GB"):
+
+        if size < 1024:
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+
+        size /= 1024
+
+    return f"{size:.1f} TB"
+
+
+def _manifest_table(files):
+
+    table = Table(
+        box=None,
+        show_header=True,
+        header_style="bold cyan",
+        pad_edge=False,
+        expand=False,
+    )
+
+    table.add_column("File", style="white")
+    table.add_column("Size", justify="right", style="white")
+
+    total = 0
+
+    for filepath in files:
+
+        size = Path(filepath).stat().st_size
+        total += size
+
+        table.add_row(Path(filepath).name, _human_size(size))
+
+    table.add_section()
+
+    table.add_row(
+        f"[bold cyan]{len(files)} file(s)[/bold cyan]",
+        f"[bold cyan]{_human_size(total)}[/bold cyan]",
+    )
+
+    return table
+
+
+def _print_script(lines, title):
+
+    #
+    # No box — a bordered panel puts a leading "│" on every line, which a
+    # drag-select-to-copy off the terminal (no clipboard access, over SSH,
+    # etc.) would grab too. A rule frames it without touching the text.
+    #
+    console.print()
+    console.rule(f"[bold yellow]▸ {title}[/bold yellow]", style="yellow", align="left")
+    console.print()
+
+    for line in lines:
+        console.print(f"[bold yellow]{line}[/bold yellow]", soft_wrap=True, highlight=False)
+
+    console.print()
+
+
+def _print_alternatives(label_cmds):
+
+    console.rule("[dim]other delivery methods[/dim]", style="grey50", align="left")
+    console.print()
+
+    for label, cmd in label_cmds:
+
+        console.print(
+            f"[dim cyan]{label:<10}[/dim cyan][yellow]{cmd}[/yellow]",
+            soft_wrap=True,
+            highlight=False,
+        )
+
+    console.print()
+
 
 def detect_ip():
 
@@ -245,63 +331,46 @@ def mode_http(
     port
 ):
 
-    print(
-        f"\n{M}=== HTTP ==={W}\n"
+    console.print()
+    console.print(
+        Panel(
+            _manifest_table(files),
+            title="[bold white]HTTP DELIVERY[/bold white]",
+            title_align="left",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
     )
 
-    clipboard = []
+    script_lines = []
+    per_file_cmds = {}
 
     for filepath in files:
 
-        filename = (
-            Path(filepath)
-            .name
-        )
+        filename = Path(filepath).name
 
-        cmds = build_http_commands(
-            ip,
-            port,
-            filename
-        )
+        cmds = build_http_commands(ip, port, filename)
 
-        print(
-            f"{C}{filename}{W}\n"
-        )
+        per_file_cmds[filename] = cmds
 
-        for name, cmd in cmds.items():
+        script_lines.append(cmds["curl"])
 
-            print(
-                f"{B}[{name}]{W}"
-            )
+    _print_script(script_lines, "RUN ON TARGET")
 
-            print(cmd)
-            print()
+    copy_clipboard("\n".join(script_lines))
 
-        clipboard.append(
-            cmds["curl"]
-        )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
 
-    copy_clipboard(
-        "\n".join(clipboard)
-    )
+    example = per_file_cmds[Path(files[0]).name]
 
-    print(
-        f"{G}→ helpers copied to clipboard{W}"
-    )
+    _print_alternatives([("wget", example["wget"])])
 
-    directory = (
-        Path(files[0])
-        .parent
-    )
-
-    print(
-        f"\n{Y}[*] Serving "
-        f"{len(files)} file(s) "
-        f"at http://{ip}:{port}/{W}"
-    )
+    console.print(f"[yellow][*] Serving {len(files)} file(s) at http://{ip}:{port}/[/yellow]", highlight=False)
 
     return serve_http(
-        directory,
+        Path(files[0]).parent,
         port
     )
 
@@ -312,50 +381,35 @@ def mode_fileless(
     port
 ):
 
-    filename = (
-        Path(filepath)
-        .name
-    )
+    filename = Path(filepath).name
 
-    cmds = build_fileless_commands(
-        ip,
-        port,
-        filename
-    )
+    cmds = build_fileless_commands(ip, port, filename)
 
     if not cmds:
 
-        print(
-            f"\n{R}[!] Unsupported file type{W}"
-        )
+        console.print("[red][!] Unsupported file type[/red]")
 
         return
 
-    print(
-        f"\n{M}=== FILELESS ==={W}\n"
+    size = _human_size(Path(filepath).stat().st_size)
+
+    console.print()
+    console.print(
+        f"[bold white]FILELESS DELIVERY[/bold white]  "
+        f"[dim]{filename} · {size} · nothing ever touches disk[/dim]",
+        highlight=False,
     )
 
-    for name, cmd in cmds.items():
+    _print_script([cmds["curl"]], "RUN ON TARGET")
 
-        print(
-            f"{B}[{name}]{W}"
-        )
+    copy_clipboard(cmds["curl"])
 
-        print(cmd)
-        print()
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
 
-    copy_clipboard(
-        cmds["curl"]
-    )
+    _print_alternatives([("wget", cmds["wget"])])
 
-    print(
-        f"{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        f"\n{Y}[*] Serving {filename} "
-        f"at http://{ip}:{port}/{W}"
-    )
+    console.print(f"[yellow][*] Serving {filename} at http://{ip}:{port}/[/yellow]", highlight=False)
 
     return serve_http(
         Path(filepath).parent,
@@ -365,34 +419,25 @@ def mode_fileless(
 
 def mode_offline(files):
 
-    print(
-        f"\n{M}=== OFFLINE ==={W}\n"
-    )
-
-    clipboard = []
-
-    for filepath in files:
-
-        cmd = build_offline_command(
-            filepath
+    console.print()
+    console.print(
+        Panel(
+            _manifest_table(files),
+            title="[bold white]OFFLINE DELIVERY[/bold white]",
+            title_align="left",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
         )
-
-        print(
-            f"{C}{Path(filepath).name}{W}\n"
-        )
-
-        print(cmd)
-        print()
-
-        clipboard.append(cmd)
-
-    copy_clipboard(
-        "\n\n".join(clipboard)
     )
 
-    print(
-        f"{G}→ helpers copied to clipboard{W}"
-    )
+    script_lines = [build_offline_command(filepath) for filepath in files]
+
+    _print_script(script_lines, "RUN ON TARGET, one file at a time")
+
+    copy_clipboard("\n\n".join(script_lines))
+
+    console.print("[green]→ copied to clipboard[/green]")
 
 
 def mode_bash(
@@ -401,41 +446,28 @@ def mode_bash(
     port
 ):
 
-    print(
-        f"\n{M}=== BASH TCP ==={W}\n"
+    console.print()
+    console.print(
+        Panel(
+            _manifest_table(files),
+            title="[bold white]BASH TCP DELIVERY[/bold white]",
+            title_align="left",
+            border_style="cyan",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
     )
 
-    clipboard = []
+    script_lines = [
+        build_bash_tcp_command(ip, port, Path(filepath).name)
+        for filepath in files
+    ]
 
-    for filepath in files:
+    _print_script(script_lines, "RUN ON TARGET — /dev/tcp, no curl/wget needed")
 
-        filename = (
-            Path(filepath)
-            .name
-        )
+    copy_clipboard("\n".join(script_lines))
 
-        cmd = build_bash_tcp_command(
-            ip,
-            port,
-            filename
-        )
-
-        print(
-            f"{C}{filename}{W}\n"
-        )
-
-        print(cmd)
-        print()
-
-        clipboard.append(cmd)
-
-    copy_clipboard(
-        "\n".join(clipboard)
-    )
-
-    print(
-        f"{G}→ helpers copied to clipboard{W}"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
 
     return serve_http(
         Path(files[0]).parent,
@@ -449,33 +481,29 @@ def mode_bash(
 
 def choose_mode():
 
-    print(
-        f"\n{W_BOLD}"
-        f"[*] LINUX FILE DELIVERY"
-        f"{W}"
+    table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+    table.add_column(style="bold cyan", no_wrap=True)
+    table.add_column(style="white")
+    table.add_column(style="dim")
+
+    table.add_row("[1] HTTP", "curl/wget", "fastest, needs a listener port")
+    table.add_row("[2] Fileless", "curl | bash", "nothing ever touches disk")
+    table.add_row("[3] Offline", "base64 paste", "no network in/out at all")
+    table.add_row("[4] Bash TCP", "/dev/tcp", "no curl/wget on target needed")
+
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[bold white]LINUX FILE DELIVERY[/bold white]",
+            title_align="left",
+            border_style="blue",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
     )
 
-    print(
-        f"\n  {B}[1]{W} HTTP"
-    )
-
-    print(
-        f"  {B}[2]{W} Fileless"
-    )
-
-    print(
-        f"  {B}[3]{W} Offline Base64"
-    )
-
-    print(
-        f"  {B}[4]{W} Bash TCP"
-    )
-
-    print()
-
-    choice = input(
-        f"{B}select{W}> "
-    ).strip()
+    choice = input(f"\n{B}select> {W}").strip()
 
     return {
         "1": "http",
@@ -505,13 +533,7 @@ def stage_linux_files(
 
         if not Path(filepath).exists():
 
-            print(
-                f"\n{R}[!] File not found:{W}"
-            )
-
-            print(
-                f"  {filepath}"
-            )
+            console.print(f"[red][!] File not found:[/red] {filepath}", highlight=False)
 
             return
 
@@ -543,10 +565,7 @@ def stage_linux_files(
 
         if len(files) != 1:
 
-            print(
-                f"\n{R}[!] "
-                f"Fileless only supports one file{W}"
-            )
+            console.print("[red][!] Fileless only supports one file[/red]")
 
             return
 
@@ -636,10 +655,7 @@ def run(data=None, cred=None, args=None):
 
     if not files:
 
-        print(
-            f"\n{R}[!] Usage:{W} "
-            f"ctf upload.linux <file>"
-        )
+        console.print("[red][!] Usage:[/red] ctf upload.linux <file>", highlight=False)
 
         return data
 

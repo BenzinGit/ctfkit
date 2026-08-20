@@ -1,6 +1,13 @@
 from pathlib import Path
 import pyperclip
 
+from rich.console import Console, Group
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
+from rich.markup import escape
+from rich import box
+
 from core.paths import get_tools_dir
 from modules.upload.linux import stage_linux_files
 from modules.download.linux import receive_file
@@ -15,10 +22,12 @@ G, C, B, Y, W, R = (
         '\033[91m',
 )
 
-priority_colors = {
-    "HIGH": R,
-    "MEDIUM": Y,
-    "LOW": B,
+console = Console()
+
+PRIORITY_STYLE = {
+    "HIGH": "bold red",
+    "MEDIUM": "bold yellow",
+    "LOW": "bold cyan",
 }
 
 
@@ -373,50 +382,118 @@ def analyze(outfile):
 
 
 
+    _print_banner()
+    _print_findings(findings)
+    _print_reports(reports)
+
+
+# ==========================================
+# PRESENTATION
+# ==========================================
+
+def _print_banner():
+
+    console.print()
+    console.print(
+        Panel(
+            Text("LINUX PRIVILEGE ESCALATION ANALYZER", justify="center", style="bold white"),
+            border_style="cyan",
+            box=box.DOUBLE,
+        )
+    )
+
+
+def _print_findings(findings):
+
+    console.print()
+
+    if not findings:
+        console.print("[dim]No findings.[/dim]")
+        return
+
     for level in ("HIGH", "MEDIUM", "LOW"):
-        group = [x for x in findings if x["priority"] == level]
-        
+
+        group = [f for f in findings if f["priority"] == level]
 
         if not group:
             continue
 
-        color = priority_colors[level]
-        
+        style = PRIORITY_STYLE[level]
+        line_style = style.split()[-1]
 
-        print()
-        print(color + "=" * 60)
-        print(f" {level} PRIORITY")
-        print("=" * 60 + W)
+        console.rule(
+            f"[{style}]{level} PRIORITY ({len(group)})[/{style}]",
+            style=line_style,
+        )
+        console.print()
 
         for finding in group:
 
-            print(
-                f"  {C}[{finding['module']}]{Y} {finding['title']}{W}"
+            body = Text()
+            body.append(finding["reason"], style="white")
+
+            for i, rec in enumerate(finding["recommendation"]):
+
+                body.append("\n\n" if i == 0 else "\n")
+
+                if rec.startswith("Run:"):
+                    command = rec[len("Run:"):].strip()
+                    body.append("➤ Run: ", style="bold white")
+                    body.append(command, style="bold yellow")
+                else:
+                    body.append("• ", style="dim")
+                    body.append(rec, style="white")
+
+            module_tag = escape(f"[{finding['module']}]")
+            title = escape(finding["title"])
+
+            console.print(
+                Panel(
+                    body,
+                    title=f"[{style}]{module_tag}[/{style}] [bold white]{title}[/bold white]",
+                    title_align="left",
+                    border_style=line_style,
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
             )
+            console.print()
 
-            print(f"    └───┬ {W}{finding['reason']}{W}")
-            for recommendation in finding["recommendation"]:
-                print(f"        ├─ {recommendation}")
-            print()
 
-    #
-    # Detailed reports
-    #
-    print()
-    print(C + "=" * 60)
-    print("MODULE REPORTS")
-    print("=" * 60 + W)
+def _print_reports(reports):
+
+    console.rule("[bold cyan]MODULE REPORTS[/bold cyan]", style="cyan")
+    console.print()
 
     for report in reports:
 
-        print()
+        table = Table(
+            show_header=False,
+            box=None,
+            pad_edge=False,
+            padding=(0, 2, 0, 0),
+        )
 
-        print(f"{C}{report['module']}{W}")
-        print("-" * 40)
+        table.add_column(style="bold cyan", no_wrap=True)
+        table.add_column(style="white")
 
         for key, value in report["summary"].items():
-            print(f"{C}{key:<18}{W}: {value}")
+            table.add_row(str(key), str(value))
+
+        elements = [table]
 
         if report.get("report"):
-            print()
-            print(report["report"])
+            elements.append(Text(""))
+            elements.append(Text(report["report"]))
+
+        console.print(
+            Panel(
+                Group(*elements),
+                title=f"[bold cyan]{escape(report['module'])}[/bold cyan]",
+                title_align="left",
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+        console.print()

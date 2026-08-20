@@ -5,6 +5,8 @@ Token Privileges Analyzer
 
 import re
 
+from rich.table import Table
+
 
 SECTION = "PRIVILEGES"
 
@@ -57,6 +59,7 @@ PRIVILEGES = {
         "recommendation": [
             "reg save HKLM\\SAM sam.hive && reg save HKLM\\SYSTEM system.hive, then extract hashes offline",
             "robocopy /b to copy files that are otherwise access-denied",
+            "Run: ctf privesc.windows.groups.backup",
         ]
     },
 
@@ -172,31 +175,47 @@ def _parse_build(section):
 # REPORT
 # ==========================================
 
+PRIORITY_MARKUP = {
+    "HIGH": "bold red",
+    "MEDIUM": "bold yellow",
+    "LOW": "bold cyan",
+}
+
+
 def _render_report(enabled, disabled, detected):
 
-    report = []
+    table = Table(
+        box=None,
+        show_header=True,
+        header_style="bold cyan",
+        pad_edge=False,
+        padding=(0, 2, 0, 0),
+    )
 
-    if enabled:
+    table.add_column("Privilege")
+    table.add_column("State")
+    table.add_column("Priority")
 
-        report.append("Enabled Privileges")
-        report.append("-" * 19)
+    for name in enabled:
 
-        for name in enabled:
+        if name in detected:
 
-            if name in detected:
-                report.append(f"{name}  [{PRIVILEGES[name]['priority']}]")
-            else:
-                report.append(name)
+            priority = PRIVILEGES[name]["priority"]
+            style = PRIORITY_MARKUP[priority]
 
-        report.append("")
+            table.add_row(
+                f"[bold white]{name}[/bold white]",
+                "[green]Enabled[/green]",
+                f"[{style}]{priority}[/{style}]",
+            )
 
-    if disabled:
+        else:
+            table.add_row(f"[dim]{name}[/dim]", "[dim]Enabled[/dim]", "[dim]-[/dim]")
 
-        report.append("Disabled Privileges")
-        report.append("-" * 20)
-        report.append(", ".join(disabled))
+    for name in disabled:
+        table.add_row(f"[dim]{name}[/dim]", "[dim]Disabled[/dim]", "[dim]-[/dim]")
 
-    return "\n".join(report)
+    return table
 
 
 # ==========================================
@@ -227,7 +246,7 @@ def analyze(section):
             potato_cmd = "ctf privesc.windows.privileges.potato"
             if build:
                 potato_cmd += f" {build}"
-            recommendation = [f"Run: {potato_cmd}"] + recommendation
+            recommendation = recommendation + [f"Run: {potato_cmd}"]
 
         findings.append({
 

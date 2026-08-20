@@ -96,7 +96,7 @@ def analyze(section):
 
                         findings.append({
                             "priority": "HIGH",
-                            "module": "history",
+                            "module": "HISTORY",
                             "title": line,
                             "reason": reason,
                             "recommendation": [
@@ -125,7 +125,7 @@ def analyze(section):
 
                         findings.append({
                             "priority": "MEDIUM",
-                            "module": "history",
+                            "module": "HISTORY",
                             "title": line,
                             "reason": reason,
                             "recommendation": [
@@ -154,7 +154,7 @@ def analyze(section):
 
                         findings.append({
                             "priority": "LOW",
-                            "module": "history",
+                            "module": "HISTORY",
                             "title": line,
                             "reason": reason,
                             "recommendation": [

